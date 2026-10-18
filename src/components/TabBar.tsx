@@ -1,0 +1,66 @@
+import type { BottomTabBarProps } from 'expo-router/js-tabs';
+import { EyeIcon, HouseSimpleIcon, Icon, LockSimpleIcon, PathIcon } from 'phosphor-react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { colors, fonts } from '../theme';
+import { HelplineRow } from './ui';
+
+const TABS: { name: string; label: string; icon: Icon }[] = [
+  { name: 'home', label: 'Home', icon: HouseSimpleIcon },
+  { name: 'exposure', label: 'Exposure', icon: EyeIcon },
+  { name: 'vault', label: 'Vault', icon: LockSimpleIcon },
+  { name: 'plan', label: 'Plan', icon: PathIcon },
+];
+
+/** Detail screens that live under a tab without having their own. */
+const PARENT_TAB: Record<string, string> = { tracker: 'home', bait: 'home' };
+
+export function NazarTabBar({ state, navigateToTab }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const current = state.routes[state.index]?.name ?? 'home';
+  const active = PARENT_TAB[current] ?? current;
+
+  return (
+    <View style={styles.wrap}>
+      <HelplineRow />
+      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+        {TABS.map(({ name, label, icon: I }) => {
+          const on = name === active;
+          const route = state.routes.find((r) => r.name === name);
+          return (
+            <Pressable
+              key={name}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={label}
+              onPress={() => route && navigateToTab(route.key)}
+              style={styles.tab}
+            >
+              <View style={[styles.indicator, on && { backgroundColor: colors.lavender }]}>
+                <I size={20} weight={on ? 'fill' : 'regular'} color={on ? colors.primary : colors.muted} />
+              </View>
+              <Text style={[styles.label, on && styles.labelOn]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { backgroundColor: colors.cream },
+  bar: {
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.hairline,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 8,
+  },
+  tab: { alignItems: 'center', gap: 3, minWidth: 72, paddingBottom: 4 },
+  indicator: { width: 58, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  label: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
+  labelOn: { fontFamily: fonts.semibold, color: colors.primary },
+});
