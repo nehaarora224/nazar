@@ -39,6 +39,20 @@
           "resizeMode": "contain",
           "backgroundColor": "#F7F7F7"
         }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "This app uses Bluetooth to scan for nearby devices only while you are on the scan screen."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app reads photos you choose, on this device only, to check them for hidden location data. Nothing is uploaded."
+        }
       ]
     ],
     "experiments": {
