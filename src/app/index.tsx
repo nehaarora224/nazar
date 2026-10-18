@@ -2,10 +2,11 @@ import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { BackspaceIcon, CaretDownIcon, ClockCounterClockwiseIcon, DotsThreeVerticalIcon } from 'phosphor-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { evaluate, formatResult } from '../calc';
+import { useScreenSize } from '../components/DeviceFrame';
 import { NazarMark } from '../components/Logo';
 import { colors, fonts } from '../theme';
 
@@ -14,6 +15,7 @@ const SECRET = '1947';
 const START = { expr: '720 + 173', display: '893' };
 
 const KEYS = ['AC', '( )', '%', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '0', '.', '⌫', '='];
+const KEY_ROWS = [0, 4, 8, 12, 16].map((i) => KEYS.slice(i, i + 4));
 const FUNCTION_KEYS = ['AC', '( )', '%'];
 const OPERATORS = ['÷', '×', '−', '+'];
 
@@ -26,8 +28,9 @@ export default function Calculator() {
   const [display, setDisplay] = useState(START.display);
   const [unlocking, setUnlocking] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { width } = useWindowDimensions();
-  const key = Math.min(80, Math.floor((width - 32 - 36) / 4));
+  const { width, height } = useScreenSize();
+  // On shorter screens, shrink the five key rows so the display keeps its room (~370 for everything else).
+  const key = Math.min(80, Math.floor((width - 32 - 36) / 4), Math.floor((height - 370) / 5));
 
   // Whenever we land back here (Quick exit, app resumed), look untouched.
   useFocusEffect(
@@ -101,40 +104,44 @@ export default function Calculator() {
           <CaretDownIcon size={18} color="#5F6368" style={{ marginLeft: 'auto' }} />
         </View>
         <View style={styles.keys}>
-          {KEYS.map((k) => {
-            const isFn = FUNCTION_KEYS.includes(k);
-            const isOp = OPERATORS.includes(k);
-            const isEq = k === '=';
-            return (
-              <Pressable
-                key={k}
-                onPress={() => press(k)}
-                accessibilityRole="button"
-                accessibilityLabel={k === '⌫' ? 'Backspace' : k}
-                style={({ pressed }) => [
-                  styles.key,
-                  { width: key, height: key, borderRadius: key / 2 },
-                  { backgroundColor: isEq ? '#4A4D52' : isOp ? '#C7CACF' : isFn ? '#D5D7DB' : '#E6E6E6' },
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                {k === '⌫' ? (
-                  <BackspaceIcon size={26} color="#202124" />
-                ) : (
-                  <Text
-                    style={[
-                      styles.keyText,
-                      isFn && { fontSize: 24, fontWeight: '500' },
-                      (isOp || isEq) && { fontSize: 32 },
-                      isEq && { color: '#F5F5F5' },
+          {KEY_ROWS.map((row) => (
+            <View key={row[0]} style={styles.keyRow}>
+              {row.map((k) => {
+                const isFn = FUNCTION_KEYS.includes(k);
+                const isOp = OPERATORS.includes(k);
+                const isEq = k === '=';
+                return (
+                  <Pressable
+                    key={k}
+                    onPress={() => press(k)}
+                    accessibilityRole="button"
+                    accessibilityLabel={k === '⌫' ? 'Backspace' : k}
+                    style={({ pressed }) => [
+                      styles.key,
+                      { width: key, height: key, borderRadius: key / 2 },
+                      { backgroundColor: isEq ? '#4A4D52' : isOp ? '#C7CACF' : isFn ? '#D5D7DB' : '#E6E6E6' },
+                      pressed && { opacity: 0.7 },
                     ]}
                   >
-                    {k}
-                  </Text>
-                )}
-              </Pressable>
-            );
-          })}
+                    {k === '⌫' ? (
+                      <BackspaceIcon size={26} color="#202124" />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.keyText,
+                          isFn && { fontSize: 24, fontWeight: '500' },
+                          (isOp || isEq) && { fontSize: 32 },
+                          isEq && { color: '#F5F5F5' },
+                        ]}
+                      >
+                        {k}
+                      </Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
         </View>
       </SafeAreaView>
 
@@ -169,14 +176,12 @@ const styles = StyleSheet.create({
   },
   sci: { fontSize: 18, color: '#5F6368' },
   keys: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 12,
+    gap: 12,
     paddingHorizontal: 16,
     paddingTop: 6,
     paddingBottom: 18,
   },
+  keyRow: { flexDirection: 'row', justifyContent: 'space-between' },
   key: { alignItems: 'center', justifyContent: 'center' },
   keyText: { fontSize: 30, color: '#202124' },
   unlock: {
