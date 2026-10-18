@@ -1,4 +1,17 @@
-import type { BaitEvent, EmailBait, EventReview, Evidence, LinkEvent, QuietEntry, TemplateId, TrackerEntry } from './store';
+import type {
+  AuditFinding,
+  AuditItemState,
+  AuditModuleId,
+  BaitEvent,
+  EmailBait,
+  EventReview,
+  Evidence,
+  LinkEvent,
+  QuietEntry,
+  RemediationAction,
+  TemplateId,
+  TrackerEntry,
+} from './store';
 
 /**
  * Fictional sample records so the app can be demonstrated without empty screens.
@@ -121,7 +134,52 @@ export function buildSample(now = Date.now()) {
 
   const planDone: Record<string, boolean> = { '0-0': true, '0-1': true, '1-0': true };
 
-  return { accounts, sessions, sharing, emailBaits, linkEvents, baitEvents, quietEntries, trackerEntries, evidence, pending, planDone };
+  // Digital Footprint Audit sample: a part-done audit with a few exposures and remediation.
+  const auditItems: Record<string, AuditItemState & Sampled> = {
+    'social:profile_visibility': { status: 'reviewed_ok', at: ago(1 * DAY), sample: true },
+    'social:contact_in_bio': { status: 'exposure', note: 'Phone number shown in Instagram bio', at: ago(1 * DAY), sample: true },
+    'social:tags_links': { status: 'reviewed_ok', at: ago(1 * DAY), sample: true },
+    'location:geotags': { status: 'exposure', note: 'Recent posts geotagged near home', at: ago(22 * HOUR), sample: true },
+    'location:sharing_settings': { status: 'reviewed_ok', at: ago(22 * HOUR), sample: true },
+    'contact:username_reuse': { status: 'exposure', note: 'Same handle on 5 services', at: ago(2 * DAY), sample: true },
+    'photo:metadata': { status: 'exposure', note: '2 of 4 photos carried GPS coordinates', at: ago(3 * HOUR), sample: true },
+    'photo:visual_id': { status: 'na', at: ago(3 * HOUR), sample: true },
+  };
+  const F = (module: AuditModuleId, itemId: string, title: string, source: AuditFinding['source'], ago2: number): AuditFinding & Sampled => ({
+    id: `s-f-${itemId}`,
+    module,
+    itemId,
+    title,
+    source,
+    at: ago(ago2),
+    updatedAt: ago(ago2),
+    sample: true,
+  });
+  const auditFindings: (AuditFinding & Sampled)[] = [
+    F('social', 'contact_in_bio', 'Phone number visible in public Instagram bio', 'guided', 1 * DAY),
+    F('location', 'geotags', 'Several recent posts geotagged within ~1 km of home', 'guided', 22 * HOUR),
+    F('contact', 'username_reuse', 'The handle “priya.rao” is reused on 5 services', 'manual', 2 * DAY),
+    { ...F('photo', 'metadata', '2 of 4 reviewed photos contained GPS coordinates', 'metadata', 3 * HOUR), detail: 'IMG_2043.jpg · 28.5679, 77.3261' },
+  ];
+  const R = (findingId: string | undefined, module: AuditModuleId, title: string, status: RemediationAction['status'], ago2: number): RemediationAction & Sampled => ({
+    id: `s-r-${title.slice(0, 8)}`,
+    findingId,
+    module,
+    title,
+    status,
+    createdAt: ago(ago2),
+    updatedAt: ago(ago2),
+    completedAt: status === 'completed' ? ago(ago2 - HOUR) : undefined,
+    sample: true,
+  });
+  const remediation: (RemediationAction & Sampled)[] = [
+    R('s-f-contact_in_bio', 'social', 'Remove phone number from Instagram bio', 'planned', 1 * DAY),
+    R('s-f-geotags', 'location', 'Turn off location tags on new posts', 'planned', 22 * HOUR),
+    R('s-f-metadata', 'photo', 'Strip location from photos before sharing', 'completed', 2 * HOUR),
+    R(undefined, 'social', 'Set older posts to friends-only', 'completed', 2 * DAY),
+  ];
+
+  return { accounts, sessions, sharing, emailBaits, linkEvents, baitEvents, quietEntries, trackerEntries, evidence, pending, planDone, auditItems, auditFindings, remediation };
 }
 
 export type SampleData = ReturnType<typeof buildSample>;

@@ -13,8 +13,10 @@ import { colors, type } from '../../theme';
 import { useView } from '../../view';
 
 type View2 = 'saved' | 'pending';
-type Cat = 'all' | 'bait' | 'tracker' | 'account' | 'quiet';
-const inCat = (cat: Cat, kind: Evidence['kind']) => cat === 'all' || (cat === 'bait' ? kind === 'bait' || kind === 'link' : kind === cat);
+type Cat = 'all' | 'bait' | 'tracker' | 'account' | 'audit';
+const inCat = (cat: Cat, kind: Evidence['kind']) =>
+  cat === 'all' ||
+  (cat === 'bait' ? kind === 'bait' || kind === 'link' : cat === 'tracker' ? kind === 'tracker' || kind === 'ble' : cat === 'audit' ? kind === 'audit' || kind === 'quiet' : kind === cat);
 
 /** Evidence Vault: saved records and items still pending her review. */
 export default function Vault() {
@@ -89,7 +91,7 @@ export default function Vault() {
               { key: 'bait', label: t('vault.f.bait') },
               { key: 'tracker', label: t('vault.f.tracker') },
               { key: 'account', label: t('vault.f.account') },
-              { key: 'quiet', label: t('vault.f.quiet') },
+              { key: 'audit', label: t('vault.f.audit') },
             ]}
           />
       <Pressable onPress={() => setNewest(!newest)} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, alignSelf: 'flex-start' }}>

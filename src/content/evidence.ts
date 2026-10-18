@@ -1,4 +1,4 @@
-import { BluetoothIcon, EnvelopeSimpleIcon, FileLockIcon, Icon, PulseIcon, UserCircleIcon } from 'phosphor-react-native';
+import { BluetoothIcon, EnvelopeSimpleIcon, FileLockIcon, FootprintsIcon, Icon, PulseIcon, UserCircleIcon } from 'phosphor-react-native';
 
 import type { TKey } from '../i18n/en';
 import type { Evidence } from '../store';
@@ -11,6 +11,8 @@ export const KIND_ICON: Record<Evidence['kind'], Icon> = {
   tracker: BluetoothIcon,
   account: UserCircleIcon,
   quiet: PulseIcon,
+  audit: FootprintsIcon,
+  ble: BluetoothIcon,
 };
 
 export const SOURCE_KEY: Record<Evidence['kind'], TKey> = {
@@ -19,6 +21,8 @@ export const SOURCE_KEY: Record<Evidence['kind'], TKey> = {
   tracker: 'vault.source.tracker',
   account: 'vault.source.account',
   quiet: 'vault.source.quiet',
+  audit: 'vault.source.audit',
+  ble: 'vault.source.ble',
 };
 
 type T = (k: TKey, p?: Record<string, string | number>) => string;
@@ -36,6 +40,10 @@ export function evidenceTitle(e: Evidence, t: T) {
       return t(checkKey(e.checkId, 'title'));
     case 'quiet':
       return t('vault.row.quiet', { area: t(`quiet.${e.area}` as TKey) });
+    case 'audit':
+      return e.title;
+    case 'ble':
+      return e.name || t('ble.unnamed');
   }
 }
 

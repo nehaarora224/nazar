@@ -47,6 +47,50 @@ export type TrackerResult = 'none' | 'tracker' | 'unknown' | 'incomplete';
 export type TrackerType = 'airtag' | 'smarttag' | 'tile' | 'other' | 'unsure';
 export type TrackerEntry = { id: string; at: number; result: TrackerResult; trackerType?: TrackerType; note?: string };
 
+/** A saved observation from a real Bluetooth scan, kept only when she chooses to. */
+export type BleObservation = {
+  id: string;
+  at: number;
+  deviceId?: string;
+  name?: string;
+  rssi?: number;
+  serviceUuids?: string[];
+  manufacturerName?: string;
+  note?: string;
+};
+
+/* ---------- Digital Footprint Audit (replaces Quiet Check) ---------- */
+
+export type AuditModuleId = 'social' | 'location' | 'contact' | 'photo';
+/** Checklist states. "not_checked" is never treated as safe. */
+export type AuditStatus = 'not_checked' | 'reviewed_ok' | 'exposure' | 'na';
+export type AuditItemState = { status: AuditStatus; note?: string; at: number };
+export type FindingSource = 'guided' | 'metadata' | 'manual';
+export type AuditFinding = {
+  id: string;
+  module: AuditModuleId;
+  itemId?: string;
+  title: string;
+  detail?: string;
+  source: FindingSource;
+  sourceUrl?: string;
+  note?: string;
+  at: number;
+  updatedAt: number;
+};
+export type RemediationStatus = 'planned' | 'completed' | 'dismissed';
+export type RemediationAction = {
+  id: string;
+  module?: AuditModuleId;
+  findingId?: string;
+  title: string;
+  detail?: string;
+  status: RemediationStatus;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number;
+};
+
 /** A snapshot copied into the Vault, so it survives even if its source is later deleted. */
 type EvidenceBase = { id: string; savedAt: number; refId: string; eventAt: number; reviewNote?: string };
 export type Evidence = EvidenceBase &
@@ -56,10 +100,12 @@ export type Evidence = EvidenceBase &
     | { kind: 'tracker'; result: TrackerResult; trackerType?: TrackerType; note?: string }
     | { kind: 'account'; checkId: string; note?: string }
     | { kind: 'quiet'; area: QuietArea; note?: string }
+    | { kind: 'audit'; module: AuditModuleId; title: string; note?: string }
+    | { kind: 'ble'; name?: string; rssi?: number; note?: string }
   );
 
 type Data = {
-  version: 1;
+  version: 2;
   lang: Lang | null;
   /** Show labelled sample records alongside real ones (for demos). Never mixed into storage. */
   showSample: boolean;
@@ -68,15 +114,20 @@ type Data = {
   emailBaits: EmailBait[];
   linkEvents: LinkEvent[];
   accountAnswers: Record<string, AccountAnswer>;
+  /** Preserved from the old Quiet Check feature; no longer added to, but kept for continuity. */
   quietEntries: QuietEntry[];
   trackerEntries: TrackerEntry[];
+  /** Digital Footprint Audit. Keyed by `${module}:${itemId}`. */
+  auditItems: Record<string, AuditItemState>;
+  auditFindings: AuditFinding[];
+  remediation: RemediationAction[];
   evidence: Evidence[];
   planDone: Record<string, boolean>;
 };
 
 const KEY = 'nazar:data:v1';
 const EMPTY: Data = {
-  version: 1,
+  version: 2,
   lang: null,
   showSample: true,
   baits: [],
@@ -86,6 +137,9 @@ const EMPTY: Data = {
   accountAnswers: {},
   quietEntries: [],
   trackerEntries: [],
+  auditItems: {},
+  auditFindings: [],
+  remediation: [],
   evidence: [],
   planDone: {},
 };
@@ -94,9 +148,13 @@ export type LoadStatus = 'loading' | 'ready' | 'error';
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-/** Older saves used `wasMe: true` on decoy events. */
+/**
+ * Forward-compatible load. v1 saves had `wasMe` on decoy events and no audit fields; both are
+ * handled by spreading over EMPTY (which adds the new audit arrays) without discarding any
+ * existing user data, including Quiet Check entries and their saved evidence.
+ */
 function migrate(raw: Partial<Data>): Data {
-  const d = { ...EMPTY, ...raw, version: 1 as const };
+  const d = { ...EMPTY, ...raw, version: 2 as const };
   const old = (raw.baitEvents ?? []) as (BaitEvent & { wasMe?: boolean })[];
   d.baitEvents = old.map(({ wasMe, ...e }) => (wasMe && !e.review ? { ...e, review: 'me' as const } : e));
   return d;
@@ -192,8 +250,42 @@ function useStoreValue() {
       answerAccountCheck: (checkId: string, status: AnswerStatus, note?: string) =>
         update((d) => ({ ...d, accountAnswers: { ...d.accountAnswers, [checkId]: { status, note, at: Date.now() } } })),
 
-      addQuietEntry: (area: QuietArea, status: 'ok' | 'review', note?: string) =>
-        update((d) => ({ ...d, quietEntries: [...d.quietEntries, { id: uid(), area, status, note, at: Date.now() }] })),
+      /* Digital Footprint Audit */
+      setAuditItem: (module: AuditModuleId, itemId: string, status: AuditStatus, note?: string) =>
+        update((d) => ({ ...d, auditItems: { ...d.auditItems, [`${module}:${itemId}`]: { status, note, at: Date.now() } } })),
+      addFinding: (f: Omit<AuditFinding, 'id' | 'at' | 'updatedAt'>) => {
+        const id = uid();
+        const now = Date.now();
+        update((d) => ({ ...d, auditFindings: [...d.auditFindings, { ...f, id, at: now, updatedAt: now }] }));
+        return id;
+      },
+      updateFinding: (id: string, patch: Partial<Pick<AuditFinding, 'title' | 'detail' | 'note' | 'sourceUrl'>>) =>
+        update((d) => ({ ...d, auditFindings: d.auditFindings.map((f) => (f.id === id ? { ...f, ...patch, updatedAt: Date.now() } : f)) })),
+      removeFinding: (id: string) =>
+        update((d) => ({
+          ...d,
+          auditFindings: d.auditFindings.filter((f) => f.id !== id),
+          remediation: d.remediation.map((r) => (r.findingId === id ? { ...r, findingId: undefined } : r)),
+        })),
+      addRemediation: (r: Omit<RemediationAction, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: RemediationStatus }) => {
+        const id = uid();
+        const now = Date.now();
+        update((d) =>
+          // Don't duplicate an identical suggested action for the same finding.
+          d.remediation.some((x) => x.findingId === r.findingId && x.title === r.title)
+            ? d
+            : { ...d, remediation: [...d.remediation, { status: 'planned', ...r, id, createdAt: now, updatedAt: now }] },
+        );
+        return id;
+      },
+      setRemediationStatus: (id: string, status: RemediationStatus) =>
+        update((d) => ({
+          ...d,
+          remediation: d.remediation.map((r) =>
+            r.id === id ? { ...r, status, updatedAt: Date.now(), completedAt: status === 'completed' ? Date.now() : undefined } : r,
+          ),
+        })),
+      removeRemediation: (id: string) => update((d) => ({ ...d, remediation: d.remediation.filter((r) => r.id !== id) })),
 
       addTrackerEntry: (result: TrackerResult, trackerType?: TrackerType, note?: string) => {
         const id = uid();

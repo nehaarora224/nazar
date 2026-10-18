@@ -1,9 +1,14 @@
 import { useMemo } from 'react';
 
 import { ACCOUNT_CHECKS, checkKey } from './content/accountChecks';
+import { ALL_AUDIT_ITEMS, AUDIT_MODULES } from './content/audit';
 import type { TKey } from './i18n/en';
 import { buildSample, SampleData, Sampled } from './sample';
 import {
+  AuditFinding,
+  AuditItemState,
+  AuditModuleId,
+  AuditStatus,
   BaitType,
   EmailBait,
   EventReview,
@@ -13,6 +18,7 @@ import {
   latestTracker,
   QuietArea,
   QuietEntry,
+  RemediationAction,
   StoreData,
   TemplateId,
   TrackerEntry,
@@ -69,6 +75,10 @@ export function buildView(data: StoreData, sample: SampleData | null) {
 
   const quietEntries: (QuietEntry & Sampled)[] = [...data.quietEntries, ...(sample?.quietEntries ?? [])];
   const trackerEntries: (TrackerEntry & Sampled)[] = [...data.trackerEntries, ...(sample?.trackerEntries ?? [])];
+  // Audit: her own records win over any sample with the same key.
+  const auditItems: Record<string, AuditItemState & Sampled> = { ...(sample?.auditItems ?? {}), ...data.auditItems };
+  const auditFindings: (AuditFinding & Sampled)[] = [...data.auditFindings, ...(sample?.auditFindings ?? [])];
+  const remediation: (RemediationAction & Sampled)[] = [...data.remediation, ...(sample?.remediation ?? [])];
   const evidence: EvidenceView[] = [...data.evidence, ...(sample?.evidence ?? [])];
   const isSaved = (kind: Evidence['kind'], refId: string) => evidence.some((e) => e.kind === kind && e.refId === refId);
   const baitOf = (id: string) => baits.find((b) => b.id === id);
@@ -89,7 +99,7 @@ export function buildView(data: StoreData, sample: SampleData | null) {
     })),
     ...data.quietEntries
       .filter((q) => q.status === 'review' && !isSaved('quiet', q.id))
-      .map((q) => ({ id: `p-${q.id}`, kind: 'quiet' as const, title: q.note ?? '', titleKey: `quiet.${q.area}` as TKey, at: q.at, href: '/quiet-check' })),
+      .map((q) => ({ id: `p-${q.id}`, kind: 'quiet' as const, title: q.note ?? '', titleKey: `quiet.${q.area}` as TKey, at: q.at, href: '/digital-footprint-audit' })),
     ...data.trackerEntries
       .filter((t) => (t.result === 'tracker' || t.result === 'unknown') && !isSaved('tracker', t.id))
       .map((t) => ({ id: `p-${t.id}`, kind: 'tracker' as const, title: '', titleKey: `trk.cls.${t.result}` as TKey, at: t.at, href: '/tracker-detail', params: { id: t.id } })),
@@ -113,6 +123,9 @@ export function buildView(data: StoreData, sample: SampleData | null) {
     trackerEntries,
     evidence,
     pending,
+    auditItems,
+    auditFindings,
+    remediation,
     accounts: sample?.accounts ?? [],
     sessions: sample?.sessions ?? [],
     sharing: sample?.sharing ?? [],
@@ -176,6 +189,52 @@ export function quietState(data: StoreData, v: View): CheckState & { lastAt: num
   return { tone: 'safe', key: 'quietCard.doneShort', sample, clear: true, review: false, lastAt };
 }
 
+/* ---------- Digital Footprint Audit ---------- */
+
+export const AUDIT_MODULE_IDS: AuditModuleId[] = AUDIT_MODULES.map((m) => m.id);
+export const auditItemState = (v: View, module: AuditModuleId, item: string): (AuditItemState & Sampled) | undefined =>
+  v.auditItems[`${module}:${item}`];
+
+export function auditModuleSummary(v: View, module: AuditModuleId) {
+  const items = ALL_AUDIT_ITEMS.filter((i) => i.module === module);
+  const states = items.map((i) => auditItemState(v, module, i.item));
+  const counted: Record<AuditStatus, number> = { not_checked: 0, reviewed_ok: 0, exposure: 0, na: 0 };
+  for (const s of states) counted[s?.status ?? 'not_checked']++;
+  const checked = items.length - counted.not_checked;
+  const openFindings = v.auditFindings.filter((f) => f.module === module).length;
+  const sample = states.some((s) => s?.sample) || v.auditFindings.some((f) => f.module === module && f.sample);
+  return { total: items.length, checked, exposure: counted.exposure, openFindings, sample };
+}
+
+export function auditOverall(v: View) {
+  const per = AUDIT_MODULE_IDS.map((m) => auditModuleSummary(v, m));
+  const total = per.reduce((n, s) => n + s.total, 0);
+  const checked = per.reduce((n, s) => n + s.checked, 0);
+  const exposure = per.reduce((n, s) => n + s.exposure, 0);
+  const findings = v.auditFindings.length;
+  const sample = per.some((s) => s.sample);
+  return { total, checked, exposure, findings, sample };
+}
+
+export function remediationSummary(v: View) {
+  const planned = v.remediation.filter((r) => r.status === 'planned').length;
+  const completed = v.remediation.filter((r) => r.status === 'completed').length;
+  const dismissed = v.remediation.filter((r) => r.status === 'dismissed').length;
+  return { planned, completed, dismissed, total: v.remediation.length };
+}
+
+/** Home card state for the audit. */
+export function auditState(data: StoreData, v: View): CheckState {
+  const o = auditOverall(v);
+  const sampleOnly = o.sample && o.checked === auditOverall(buildView(data, null)).checked;
+  if (o.checked === 0) return { tone: 'off', key: 'afCard.none', clear: false, review: false };
+  if (o.findings > 0)
+    return { tone: 'look', key: o.findings === 1 ? 'afCard.findings_one' : 'afCard.findings_other', params: { n: o.findings }, sample: sampleOnly || undefined, clear: false, review: true };
+  if (o.checked < o.total)
+    return { tone: 'off', key: 'afCard.progress', params: { done: o.checked, total: o.total }, sample: sampleOnly || undefined, clear: false, review: false };
+  return { tone: 'safe', key: 'afCard.clear', sample: sampleOnly || undefined, clear: true, review: false };
+}
+
 export function trackerState(data: StoreData, v: View): CheckState & { entry?: TrackerEntry & Sampled } {
   const real = latestTracker(data.trackerEntries);
   const entry = real ?? (v.showSample && v.sample ? latestTracker(v.sample.trackerEntries) : undefined);
@@ -230,7 +289,7 @@ export function findings(data: StoreData, v: View): Finding[] {
   }
   for (const q of v.quietEntries)
     if (q.status === 'review')
-      out.push({ id: `f-${q.id}`, category: q.area === 'location' ? 'location' : 'device', title: q.note ?? '', titleKey: `quiet.${q.area}` as TKey, lineKey: 'exp.line.quiet', tone: 'look', saved: v.isSaved('quiet', q.id), at: q.at, href: '/quiet-check', sample: q.sample });
+      out.push({ id: `f-${q.id}`, category: q.area === 'location' ? 'location' : 'device', title: q.note ?? '', titleKey: `quiet.${q.area}` as TKey, lineKey: 'exp.line.quiet', tone: 'look', saved: v.isSaved('quiet', q.id), at: q.at, href: '/digital-footprint-audit', sample: q.sample });
   for (const t of v.trackerEntries)
     if (t.result === 'tracker' || t.result === 'unknown')
       out.push({ id: `f-${t.id}`, category: 'movement', title: t.note ?? '', titleKey: `trk.cls.${t.result}` as TKey, lineKey: 'exp.line.tracker', tone: TRACKER_TONE[t.result], saved: v.isSaved('tracker', t.id), at: t.at, href: t.sample ? '/tracker' : '/tracker-detail', params: t.sample ? undefined : { id: t.id }, sample: t.sample });

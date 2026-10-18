@@ -33,7 +33,8 @@ export default function EvidenceDetail() {
     if (e.kind === 'bait' || e.kind === 'link') router.navigate('/bait');
     else if (e.kind === 'tracker') router.navigate(e.sample ? '/tracker' : { pathname: '/tracker-detail', params: { id: e.refId } });
     else if (e.kind === 'account') router.navigate(e.sample ? { pathname: '/session', params: { id: e.refId } } : { pathname: '/account-item', params: { id: e.checkId } });
-    else router.navigate('/quiet-check');
+    else if (e.kind === 'quiet' || e.kind === 'audit') router.navigate('/digital-footprint-audit');
+    else if (e.kind === 'ble') router.navigate('/tracker');
   };
 
   return (

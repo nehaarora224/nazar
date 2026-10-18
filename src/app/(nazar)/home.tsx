@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ArrowClockwiseIcon, BluetoothIcon, CaretRightIcon, CheckCircleIcon, CloudWarningIcon, FishSimpleIcon, PlusIcon, UserCircleIcon, WaveSineIcon } from 'phosphor-react-native';
+import { ArrowClockwiseIcon, BluetoothIcon, CaretRightIcon, CheckCircleIcon, CloudWarningIcon, FishSimpleIcon, PlusIcon, UserCircleIcon, FootprintsIcon } from 'phosphor-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
@@ -8,7 +8,7 @@ import { card, IconChip, ListCard, ListRow, MainHeader, PrimaryButton, SampleBad
 import { useT } from '../../i18n';
 import { useStore } from '../../store';
 import { colors, fonts, radius, type } from '../../theme';
-import { accountState, baitSummary, quietState, trackerState, useView } from '../../view';
+import { accountState, baitSummary, auditState, trackerState, useView } from '../../view';
 
 const C = 2 * Math.PI * 44;
 
@@ -24,9 +24,9 @@ export default function Home() {
   const { t, when } = useT();
 
   const acct = accountState(data, v);
-  const quiet = quietState(data, v);
+  const audit = auditState(data, v);
   const trk = trackerState(data, v);
-  const states = [acct, quiet, trk];
+  const states = [acct, audit, trk];
   const clear = states.filter((s) => s.clear).length;
   const review = states.filter((s) => s.review).length;
   const anyChecked = states.some((s) => s.tone !== 'off' || s.clear);
@@ -102,12 +102,12 @@ export default function Home() {
               label={`${t('acctCard.title')}. ${t(acct.key, acct.params)}`}
             />
             <ListRow
-              icon={WaveSineIcon}
-              title={t('quietCard.title')}
-              status={<StatusLine t={quiet.tone} label={t(quiet.key, quiet.params)} sample={quiet.sample} />}
-              desc={t('quietCard.desc')}
-              onPress={() => router.navigate('/quiet-check')}
-              label={`${t('quietCard.title')}. ${t(quiet.key, quiet.params)}`}
+              icon={FootprintsIcon}
+              title={t('afCard.title')}
+              status={<StatusLine t={audit.tone} label={t(audit.key, audit.params)} sample={audit.sample} />}
+              desc={t('afCard.desc')}
+              onPress={() => router.navigate('/digital-footprint-audit')}
+              label={`${t('afCard.title')}. ${t(audit.key, audit.params)}`}
             />
             <ListRow
               icon={BluetoothIcon}
