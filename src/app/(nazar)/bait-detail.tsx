@@ -31,7 +31,7 @@ export default function BaitDetail() {
   useFocusEffect(
     useCallback(() => {
       if (baitServiceConfigured && real?.remoteId && real.send.status === 'sent')
-        fetchLinkEvents(real.remoteId).then((list) => list && mergeLinkEvents(real.id, list));
+        fetchLinkEvents(real.remoteId, data.ownerSecret).then((list) => list && mergeLinkEvents(real.id, list));
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [real?.id, real?.send.status]),
   );
@@ -52,7 +52,7 @@ export default function BaitDetail() {
     if (!real) return;
     setBusy(true);
     setEmailSend(real.id, { status: 'sending' });
-    const res = await sendBaitEmail({ recipient: real.recipient, template: real.template, name: real.name, subject: t(tplKey(real.template, 'subject')), body: t(tplKey(real.template, 'body')) });
+    const res = await sendBaitEmail({ recipient: real.recipient, template: real.template, name: real.name, subject: t(tplKey(real.template, 'subject')), body: t(tplKey(real.template, 'body')), ownerSecret: data.ownerSecret });
     if (res.ok) {
       setEmailSend(real.id, { status: 'sent', at: Date.now() }, res.remoteId);
       toast(t('be.sentOk'));

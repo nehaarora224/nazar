@@ -12,6 +12,7 @@
   "exclude": [
     "dist",
     ".expo",
-    "tests"
+    "tests",
+    "api"
   ]
 }

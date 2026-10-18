@@ -20,7 +20,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** Create a bait: choose email or calculator decoy, then that kind's steps. */
 export default function BaitNew() {
-  const { createBait, createEmailBait, setEmailSend } = useStore();
+  const { createBait, createEmailBait, setEmailSend, data } = useStore();
   const { toast } = useOverlay();
   const { t } = useT();
   const [step, setStep] = useState<Step>('kind');
@@ -71,6 +71,7 @@ export default function BaitNew() {
       name: name.trim(),
       subject: t(tplKey(template, 'subject')),
       body: t(tplKey(template, 'body')),
+      ownerSecret: data.ownerSecret,
     });
     if (res.ok) {
       setEmailSend(id, { status: 'sent', at: Date.now() }, res.remoteId);

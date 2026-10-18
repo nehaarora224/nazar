@@ -32,7 +32,7 @@ export default function BaitTest() {
       if (!baitServiceConfigured) return;
       data.emailBaits
         .filter((b) => b.remoteId && b.send.status === 'sent')
-        .forEach((b) => fetchLinkEvents(b.remoteId!).then((list) => list && mergeLinkEvents(b.id, list)));
+        .forEach((b) => fetchLinkEvents(b.remoteId!, data.ownerSecret).then((list) => list && mergeLinkEvents(b.id, list)));
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data.emailBaits.length]),
   );

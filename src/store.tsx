@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
@@ -107,6 +108,12 @@ export type Evidence = EvidenceBase &
 type Data = {
   version: 2;
   lang: Lang | null;
+  /**
+   * A random secret generated on this device, sent as a Bearer credential so the Bait Test
+   * backend can scope tests to this device. This is NOT user authentication — it only prevents
+   * one device reading another's tests; the server never trusts a client-supplied owner id.
+   */
+  ownerSecret: string;
   /** Show labelled sample records alongside real ones (for demos). Never mixed into storage. */
   showSample: boolean;
   baits: Bait[];
@@ -126,9 +133,13 @@ type Data = {
 };
 
 const KEY = 'nazar:data:v1';
+/** 32 random bytes as hex. Used for the device-scoped owner secret. */
+const genSecret = () => Array.from(Crypto.getRandomBytes(32), (b) => b.toString(16).padStart(2, '0')).join('');
+
 const EMPTY: Data = {
   version: 2,
   lang: null,
+  ownerSecret: '',
   showSample: true,
   baits: [],
   baitEvents: [],
@@ -155,6 +166,7 @@ const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(
  */
 function migrate(raw: Partial<Data>): Data {
   const d = { ...EMPTY, ...raw, version: 2 as const };
+  if (!d.ownerSecret) d.ownerSecret = genSecret();
   const old = (raw.baitEvents ?? []) as (BaitEvent & { wasMe?: boolean })[];
   d.baitEvents = old.map(({ wasMe, ...e }) => (wasMe && !e.review ? { ...e, review: 'me' as const } : e));
   return d;
@@ -170,6 +182,8 @@ function useStoreValue() {
     AsyncStorage.getItem(KEY)
       .then((raw) => {
         if (raw) setData(migrate(JSON.parse(raw)));
+        // First run: mint the device-scoped owner secret so it is stored once and reused.
+        else setData((d) => ({ ...d, ownerSecret: d.ownerSecret || genSecret() }));
         loaded.current = true;
         setStatus('ready');
       })
