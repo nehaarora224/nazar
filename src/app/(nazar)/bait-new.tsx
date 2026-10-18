@@ -72,6 +72,8 @@ export default function BaitNew() {
       subject: t(tplKey(template, 'subject')),
       body: t(tplKey(template, 'body')),
       ownerSecret: data.ownerSecret,
+      // The new bait's id is unique and stable, so a replayed first send can't double-dispatch.
+      idempotencyKey: id,
     });
     if (res.ok) {
       setEmailSend(id, { status: 'sent', at: Date.now() }, res.remoteId);

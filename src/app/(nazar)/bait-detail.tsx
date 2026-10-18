@@ -52,7 +52,8 @@ export default function BaitDetail() {
     if (!real) return;
     setBusy(true);
     setEmailSend(real.id, { status: 'sending' });
-    const res = await sendBaitEmail({ recipient: real.recipient, template: real.template, name: real.name, subject: t(tplKey(real.template, 'subject')), body: t(tplKey(real.template, 'body')), ownerSecret: data.ownerSecret });
+    // A deliberate resend is a new attempt; the timestamped key guards only against replaying it.
+    const res = await sendBaitEmail({ recipient: real.recipient, template: real.template, name: real.name, subject: t(tplKey(real.template, 'subject')), body: t(tplKey(real.template, 'body')), ownerSecret: data.ownerSecret, idempotencyKey: `${real.id}:${Date.now()}` });
     if (res.ok) {
       setEmailSend(real.id, { status: 'sent', at: Date.now() }, res.remoteId);
       toast(t('be.sentOk'));

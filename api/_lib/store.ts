@@ -20,7 +20,12 @@ export interface Store {
   markSeen(key: string): Promise<boolean>;
   /** Fixed-window counter. Returns the count after incrementing. */
   bump(key: string, windowSec: number): Promise<number>;
+  /** Idempotency cache for create requests: the stored result of a prior identical submission. */
+  idemGet(key: string): Promise<{ id: string; status: string } | null>;
+  idemPut(key: string, value: { id: string; status: string }): Promise<void>;
 }
+
+const IDEM_TTL_SEC = 24 * 60 * 60;
 
 const ttlSec = () => Math.max(config.retentionDays, config.tokenTtlDays) * 24 * 60 * 60;
 
@@ -35,6 +40,7 @@ class MemoryStore implements Store {
   private events = new Map<string, Expiring<EventRecord[]>>();
   private seen = new Map<string, number>();
   private counters = new Map<string, Expiring<number>>();
+  private idem = new Map<string, Expiring<{ id: string; status: string }>>();
 
   private alive<T>(m: Map<string, Expiring<T>>, k: string): T | null {
     const e = m.get(k);
@@ -95,6 +101,12 @@ class MemoryStore implements Store {
     const next = (cur ?? 0) + 1;
     this.counters.set(key, { v: next, exp: cur != null ? this.counters.get(key)!.exp : now + windowSec * 1000 });
     return next;
+  }
+  async idemGet(key: string) {
+    return this.alive(this.idem, key);
+  }
+  async idemPut(key: string, value: { id: string; status: string }) {
+    this.idem.set(key, { v: value, exp: Date.now() + IDEM_TTL_SEC * 1000 });
   }
 }
 
@@ -160,6 +172,13 @@ class KvStore implements Store {
     const n = await this.cmd<number>(['INCR', `rl:${key}`]);
     if (n === 1) await this.cmd(['EXPIRE', `rl:${key}`, windowSec]);
     return n;
+  }
+  async idemGet(key: string) {
+    const v = await this.cmd<string | null>(['GET', `idem:${key}`]);
+    return v ? (JSON.parse(v) as { id: string; status: string }) : null;
+  }
+  async idemPut(key: string, value: { id: string; status: string }) {
+    await this.cmd(['SET', `idem:${key}`, JSON.stringify(value), 'EX', IDEM_TTL_SEC]);
   }
 }
 

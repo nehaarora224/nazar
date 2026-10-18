@@ -28,6 +28,15 @@ export async function createBait(req: Req, d: Deps): Promise<Res> {
   if (!secret || secret.length < 16) return json(401, { error: 'Missing owner credential' });
   const ownerHash = ownerHashOf(secret);
 
+  // Duplicate-submission guard: a replayed request carrying the same Idempotency-Key returns the
+  // first result instead of sending a second email. Scoped by owner so keys can't collide/cross.
+  const idemKey = req.headers['idempotency-key'];
+  const idemScoped = idemKey ? `${ownerHash}:${idemKey}` : '';
+  if (idemScoped) {
+    const prior = await d.store.idemGet(idemScoped);
+    if (prior) return json(200, { id: prior.id, status: prior.status, deduped: true });
+  }
+
   // Per-owner daily cap. Not a bulk-mailer: one recipient per call, limited calls per day.
   const count = await d.store.bump(`create:${ownerHash}`, 24 * 60 * 60);
   if (count > config.maxCreatesPerDay) return json(429, { error: 'Daily limit reached for this device' });
@@ -70,6 +79,9 @@ export async function createBait(req: Req, d: Deps): Promise<Res> {
   await d.store.putBait(bait);
   await d.store.setProviderId(bait.id, sent.providerId);
   await d.store.addEvent({ id: rid(), baitId: bait.id, type: 'accepted', at: now, detail: 'Provider accepted the send request' });
+
+  // Remember the outcome so an identical retry doesn't dispatch a second email.
+  if (idemScoped) await d.store.idemPut(idemScoped, { id: bait.id, status: 'accepted' });
 
   return json(200, { id: bait.id, status: 'accepted' });
 }

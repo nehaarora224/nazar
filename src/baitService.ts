@@ -27,13 +27,15 @@ export async function sendBaitEmail(payload: {
   subject: string;
   body: string;
   ownerSecret: string;
+  /** Stable per send attempt so a replay can't dispatch a second email. */
+  idempotencyKey: string;
 }): Promise<SendResult> {
   if (!API) return { ok: false, reason: 'unavailable' };
-  const { ownerSecret, ...rest } = payload;
+  const { ownerSecret, idempotencyKey, ...rest } = payload;
   try {
     const res = await fetch(`${API}/baits`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerSecret}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerSecret}`, 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(rest),
     });
     if (!res.ok) return { ok: false, reason: 'failed', error: `HTTP ${res.status}` };

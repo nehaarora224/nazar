@@ -143,6 +143,18 @@ test('webhook with a valid signature records delivery once (idempotent)', async 
   assert.equal((status.json as any).counts.delivered, 1);
 });
 
+test('duplicate submission with the same Idempotency-Key sends once', async () => {
+  const cap: { last?: any; count: number } = { count: 0 };
+  const provider = { name: 'counting', async send(msg: any) { cap.count++; cap.last = msg; return { ok: true as const, providerId: 'pid_' + cap.count }; } };
+  const d = deps(_newMemoryStore(), provider);
+  const headers = { ...auth(OWNER), 'idempotency-key': 'abc-123' };
+  const r1 = await H.createBait(req('POST', { headers, rawBody: body(validBody) }), d);
+  const r2 = await H.createBait(req('POST', { headers, rawBody: body(validBody) }), d);
+  assert.equal(cap.count, 1); // provider called once
+  assert.equal((r1.json as any).id, (r2.json as any).id); // same result returned
+  assert.equal((r2.json as any).deduped, true);
+});
+
 test('per-owner daily create cap returns 429', async () => {
   const d = deps();
   for (let i = 0; i < 3; i++) assert.equal((await H.createBait(req('POST', { headers: auth(OWNER), rawBody: body(validBody) }), d)).status, 200);
