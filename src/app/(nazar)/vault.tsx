@@ -40,8 +40,15 @@ export default function Vault() {
   const pending = [...v.pending.filter((p) => cat === 'all' || catOfKind(p.kind) === cat)].sort((a, b) => (b.at - a.at) * (newest ? 1 : -1));
   const lastSaved = v.evidence.reduce((m, e) => Math.max(m, e.savedAt), 0);
 
+  // The downloadable evidence file contains only records the person actually saved — never the
+  // seed/example entries — so an exported summary can't present example data as genuine evidence.
+  const realEvidence = v.evidence.filter((e) => !e.sample);
   const download = async () => {
-    const text = buildTimelineText(v.evidence, t, when, dur);
+    if (realEvidence.length === 0) {
+      toast(t('vault.dl.none'));
+      return;
+    }
+    const text = buildTimelineText(realEvidence, t, when, dur);
     const res = await downloadTimeline(timelineFilename(), text);
     toast(res === 'failed' ? t('vault.dl.failed') : res === 'downloaded' ? t('vault.dl.ok') : t('vault.dl.saved'));
   };

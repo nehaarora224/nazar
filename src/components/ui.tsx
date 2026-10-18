@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
 import {
   ArrowLeftIcon,
-  CalculatorIcon,
   CaretRightIcon,
   Icon,
   InfoIcon,
@@ -18,37 +17,20 @@ import { Lang } from '../store';
 import { colors, fonts, radius, shadow, space, TAP, tone, Tone, type } from '../theme';
 import { useScreenSize } from './DeviceFrame';
 import { Wordmark } from './Logo';
-import { SheetHead, useOverlay } from './Overlay';
 
 /** Instantly back to the calculator. */
 export function quickExit() {
   router.dismissTo('/');
 }
 
-/** The Exit button: asks once ("Leave Nazar now?"), then goes straight to the calculator. */
+/** The Exit button: goes straight to the calculator. */
 export function QuickExitButton() {
   const { t } = useT();
   const { width } = useScreenSize();
-  const { openSheet, closeSheet } = useOverlay();
   const showLabel = width >= 360;
-  const ask = () =>
-    openSheet(
-      <>
-        <SheetHead title={t('exit.q')} body={t('exit.body')} />
-        <PrimaryButton
-          icon={CalculatorIcon}
-          label={t('exit.go')}
-          onPress={() => {
-            closeSheet();
-            quickExit();
-          }}
-        />
-        <TonalButton label={t('exit.stay')} onPress={closeSheet} />
-      </>,
-    );
   return (
     <Pressable
-      onPress={ask}
+      onPress={quickExit}
       accessibilityRole="button"
       accessibilityLabel={t('common.quickExit')}
       hitSlop={4}

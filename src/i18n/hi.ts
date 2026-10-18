@@ -859,6 +859,7 @@ export const hi: Record<TKey, string> = {
   'vault.dl.ok': 'टाइमलाइन डाउनलोड हुई',
   'vault.dl.saved': 'टाइमलाइन सेव हुई',
   'vault.dl.failed': 'फ़ाइल सेव नहीं हो सकी',
+  'vault.dl.none': 'डाउनलोड के लिए पहले अपना रिकॉर्ड जोड़ें',
   'vault.cat.incident': 'घटना',
   'vault.cat.bait': 'बेट टेस्ट',
   'vault.cat.tracker': 'ट्रैकर',

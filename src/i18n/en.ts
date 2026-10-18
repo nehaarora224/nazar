@@ -857,6 +857,7 @@ export const en = {
   'vault.dl.ok': 'Timeline downloaded',
   'vault.dl.saved': 'Timeline saved',
   'vault.dl.failed': 'Could not save the file',
+  'vault.dl.none': 'Add your own record first to download',
   'vault.cat.incident': 'Incident',
   'vault.cat.bait': 'Bait Test',
   'vault.cat.tracker': 'Tracker',

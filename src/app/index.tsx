@@ -16,8 +16,9 @@ import { colors, fonts } from '../theme';
 
 /** Her private code. Typing it and pressing = opens Nazar. */
 const SECRET = '1947';
-const START = { expr: '720 + 173', display: '893' };
-const START_HISTORY: CalcEntry[] = [{ expr: START.expr, result: START.display }];
+// Start blank, like a freshly opened calculator.
+const START = { expr: '', display: '0' };
+const START_HISTORY: CalcEntry[] = [];
 
 type Panel = { kind: 'none' } | { kind: 'history' } | { kind: 'menu' } | { kind: 'decoy'; bait: Bait; eventId: string; openedAt: number };
 
