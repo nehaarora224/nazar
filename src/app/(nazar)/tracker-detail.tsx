@@ -1,20 +1,23 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { LockSimpleIcon, TrashIcon } from 'phosphor-react-native';
+import { TrashIcon } from 'phosphor-react-native';
 import { Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
 import { TrackerResultCard as ResultCard } from '../../components/TrackerResultCard';
-import { Card, ConfirmButton, InfoBox, PrimaryButton, SubHeader } from '../../components/ui';
+import { SaveToVaultButton } from '../../components/SaveToVault';
+import { Card, ConfirmButton, InfoBox, SubHeader } from '../../components/ui';
 import { TKey, useT } from '../../i18n';
 import { useStore } from '../../store';
+import { useView } from '../../view';
 import { space, type } from '../../theme';
 
 /** One recorded tracker check: what was recorded, why it was flagged, limits, what to do. */
 export default function TrackerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, saveEvidence, deleteTrackerEntry } = useStore();
+  const { deleteTrackerEntry } = useStore();
   const { t } = useT();
-  const e = data.trackerEntries.find((x) => x.id === id);
+  const v = useView();
+  const e = v.trackerEntries.find((x) => x.id === id);
 
   if (!e) {
     return (
@@ -24,7 +27,7 @@ export default function TrackerDetail() {
     );
   }
 
-  const saved = data.evidence.some((x) => x.kind === 'tracker' && x.refId === e.id);
+  const saved = v.isSaved('tracker', e.id);
   const flagged = e.result === 'tracker' || e.result === 'unknown';
 
   return (
@@ -46,14 +49,12 @@ export default function TrackerDetail() {
             <Text style={[type.bodyInk, { lineHeight: 23 }]}>{t('trk.d.investigateBody')}</Text>
           </Section>
           <InfoBox kind="warn" title={t('trk.d.safety')} body={t('trk.d.safetyBody')} />
-          <PrimaryButton
-            icon={LockSimpleIcon}
-            label={saved ? t('common.savedToVault') : t('common.saveToVault')}
-            disabled={saved}
-            onPress={() => saveEvidence({ kind: 'tracker', refId: e.id, eventAt: e.at, result: e.result, trackerType: e.trackerType, note: e.note })}
-          />
+          {!e.sample && <SaveToVaultButton saved={saved} item={{ kind: 'tracker', refId: e.id, eventAt: e.at, result: e.result, trackerType: e.trackerType, note: e.note }} />}
         </>
       )}
+      {e.sample ? (
+        <InfoBox body={t('sample.readonly')} />
+      ) : (
       <ConfirmButton
         icon={TrashIcon}
         label={t('trk.d.delete')}
@@ -63,6 +64,7 @@ export default function TrackerDetail() {
           router.navigate('/tracker');
         }}
       />
+      )}
     </Screen>
   );
 }

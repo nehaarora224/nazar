@@ -1,73 +1,83 @@
-import { Href, router } from 'expo-router';
-import { CaretRightIcon, ChatCircleIcon, FootprintsIcon, Icon, ImageIcon, MapPinIcon } from 'phosphor-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { ChatCircleIcon, DeviceMobileIcon, FootprintsIcon, Icon, ImageIcon, MapPinIcon, ShieldCheckIcon } from 'phosphor-react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { card, IconChip, MainHeader, Pill } from '../../components/ui';
-import { exposure, ExposureKey } from '../../derive';
+import { Chips, Empty, InfoBox, ListCard, ListRow, MainHeader, PageTitle, SampleBanner, StatusLine } from '../../components/ui';
 import { TKey, useT } from '../../i18n';
 import { useStore } from '../../store';
-import { colors, space, tone, type } from '../../theme';
+import { tone, type } from '../../theme';
+import { exposureOverview, ExposureKey, findings, useView } from '../../view';
 
-const ICON: Record<ExposureKey, Icon> = { movement: FootprintsIcon, location: MapPinIcon, messages: ChatCircleIcon, photos: ImageIcon };
-const HREF: Record<ExposureKey, Href> = { movement: '/tracker', location: '/quiet-check', messages: '/accounts', photos: '/accounts' };
+const ICON: Record<ExposureKey, Icon> = { movement: FootprintsIcon, location: MapPinIcon, messages: ChatCircleIcon, photos: ImageIcon, device: DeviceMobileIcon };
 
-/** What can they see? Derived only from checks she has done; unchecked areas say so. */
+/** What can they see? Categories and findings from real checks and labelled samples. */
 export default function ExposureScreen() {
   const { data } = useStore();
-  const { t } = useT();
-  const items = exposure(data);
+  const v = useView();
+  const { t, tn, when } = useT();
+  const [cat, setCat] = useState<'all' | ExposureKey>('all');
+  const list = findings(data, v);
+  const overview = exposureOverview(data, v, list);
+  const shown = list.filter((f) => cat === 'all' || f.category === cat);
 
   return (
-    <Screen header={<MainHeader />} gap={14}>
-      <View style={{ gap: 6 }}>
-        <Text style={type.display} accessibilityRole="header">
-          {t('exp.heading')}
-        </Text>
-        <Text style={type.body}>{t('exp.sub')}</Text>
-      </View>
+    <Screen header={<MainHeader />}>
+      <PageTitle kicker={t('exp.label')} title={t('exp.heading')} sub={t('exp.sub')} />
+      <SampleBanner />
 
       <View style={styles.strip}>
-        {items.map(({ key, t: tn }) => {
-          const I = ICON[key];
+        {overview.map((o) => {
+          const I = ICON[o.key];
+          const c = tone[o.tone];
           return (
-            <View key={key} style={[styles.chip, { backgroundColor: tone[tn].bg }]}>
-              <I size={19} weight="fill" color={tone[tn].dot} />
-              <Text style={[type.pill, { color: tone[tn].fg, textAlign: 'center' }]} numberOfLines={2}>
-                {t(`exp.${key}` as TKey)}
+            <View key={o.key} style={[styles.chip, { backgroundColor: c.bg }]} accessibilityLabel={`${t(`exp.${o.key}` as TKey)}: ${o.open ? tn('exp.open', o.open) : o.checked ? t('exp.clear') : t('exp.notChecked')}`}>
+              <I size={19} weight="fill" color={c.dot} />
+              <Text style={[type.pill, { color: c.fg, textAlign: 'center' }]} numberOfLines={2}>
+                {t(`exp.${o.key}` as TKey)}
+              </Text>
+              <Text style={[styles.chipState, { color: c.fg }]} numberOfLines={1}>
+                {o.open ? tn('exp.open', o.open) : o.checked ? t('exp.clear') : t('exp.notChecked')}
               </Text>
             </View>
           );
         })}
       </View>
 
-      <Text style={type.overline}>{t('exp.order')}</Text>
-      {items.map(({ key, t: tn, state }) => {
-        const line = t(`exp.${key}.${state}` as TKey);
-        return (
-          <Pressable
-            key={key}
-            onPress={() => router.navigate(HREF[key])}
-            accessibilityRole="button"
-            accessibilityLabel={`${t(`exp.${key}` as TKey)}. ${line}`}
-            style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.lavenderSoft }]}
-          >
-            <IconChip icon={ICON[key]} size={44} radius={14} iconSize={21} bg={tone[tn].bg} fg={tone[tn].fg} />
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={type.label}>{t(`exp.${key}` as TKey)}</Text>
-              <Text style={type.body}>{line}</Text>
-              {tn !== 'off' && tn !== 'safe' && <Pill t={tn} label={t('acct.status.review')} style={{ alignSelf: 'flex-start' }} />}
-            </View>
-            <CaretRightIcon size={16} weight="bold" color={colors.muted} />
-          </Pressable>
-        );
-      })}
+      <Chips<'all' | ExposureKey>
+        value={cat}
+        onChange={setCat}
+        items={[{ key: 'all', label: t('vault.f.all') }, ...overview.map((o) => ({ key: o.key, label: t(`exp.${o.key}` as TKey) }))]}
+      />
+
+      <ListCard title={t('exp.findings')} count={shown.length}>
+        {shown.length === 0 ? (
+          <Empty icon={ShieldCheckIcon} title={t('exp.findingsEmpty')} body={t('exp.findingsEmptyBody')} />
+        ) : (
+          shown.map((f, i) => (
+            <ListRow
+              key={f.id}
+              first={i === 0}
+              icon={ICON[f.category]}
+              iconBg={tone[f.saved ? 'safe' : f.tone].bg}
+              iconFg={tone[f.saved ? 'safe' : f.tone].fg}
+              title={f.titleKey ? (f.title ? `${t(f.titleKey)} · ${f.title}` : t(f.titleKey)) : f.title}
+              status={<StatusLine t={f.saved ? 'safe' : f.tone} label={f.saved ? t('exp.status.saved') : t('exp.status.review')} sample={f.sample} />}
+              desc={`${t(`exp.${f.category}` as TKey)} · ${t(f.lineKey)}`}
+              meta={when(f.at)}
+              onPress={() => router.navigate({ pathname: f.href as '/accounts', params: f.params })}
+            />
+          ))
+        )}
+      </ListCard>
+      <InfoBox body={t('exp.caveat')} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  strip: { flexDirection: 'row', gap: 6 },
-  chip: { flex: 1, alignItems: 'center', gap: 5, paddingTop: 10, paddingBottom: 9, paddingHorizontal: 2, borderRadius: 14 },
-  row: { ...card, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: space.lg },
+  strip: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { flexBasis: '31%', flexGrow: 1, alignItems: 'center', gap: 4, paddingTop: 10, paddingBottom: 9, paddingHorizontal: 4, borderRadius: 14 },
+  chipState: { fontSize: 13, fontWeight: '500' },
 });

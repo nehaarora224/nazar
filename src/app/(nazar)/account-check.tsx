@@ -4,9 +4,8 @@ import { useCallback, useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { Card, Choice, InfoBox, NoteInput, PrimaryButton, SecondaryButton, Stats, SubHeader } from '../../components/ui';
+import { Card, Choice, InfoBox, NoteInput, PageTitle, PrimaryButton, SecondaryButton, Stats, SubHeader, TonalButton } from '../../components/ui';
 import { ACCOUNT_CHECKS, checkKey } from '../../content/accountChecks';
-import { accountSummary } from '../../derive';
 import { useT } from '../../i18n';
 import { AnswerStatus, useStore } from '../../store';
 import { colors, space, type } from '../../theme';
@@ -42,10 +41,7 @@ export default function AccountCheck() {
   if (step === 'intro') {
     return (
       <Screen header={<SubHeader title={t('acct.title')} onBack={leave} />}>
-        <Text style={type.display} accessibilityRole="header">
-          {t('flow.intro.title')}
-        </Text>
-        <Text style={type.bodyInk}>{t('flow.intro.what')}</Text>
+        <PageTitle title={t('flow.intro.title')} sub={t('flow.intro.what')} />
         <Card>
           <View style={{ gap: space.sm }}>
             <Text style={type.bodyInk}>{t('flow.intro.auto')}</Text>
@@ -60,12 +56,12 @@ export default function AccountCheck() {
   }
 
   if (step === 'done') {
-    const s = accountSummary(data);
+    const answers = ACCOUNT_CHECKS.map((x) => data.accountAnswers[x.id]);
+    const done = answers.filter((x) => x && x.status !== 'skipped').length;
+    const s = { done, review: answers.filter((x) => x?.status === 'review').length, todo: ACCOUNT_CHECKS.length - done };
     return (
       <Screen header={<SubHeader title={t('acct.title')} onBack={leave} />}>
-        <Text style={type.display} accessibilityRole="header">
-          {t('flow.finish.title')}
-        </Text>
+        <PageTitle title={t('flow.finish.title')} />
         <Stats
           items={[
             { label: t('acct.statDone'), value: s.done },
@@ -94,14 +90,7 @@ export default function AccountCheck() {
         <View style={[styles.fill, { width: `${((step + 1) / ACCOUNT_CHECKS.length) * 100}%` }]} />
       </View>
 
-      <View style={{ gap: 4 }}>
-        <Text style={type.display} accessibilityRole="header">
-          {t(checkKey(c.id, 'title'))}
-        </Text>
-        <Text style={type.body}>
-          {c.service} · {t('acct.guided')}
-        </Text>
-      </View>
+      <PageTitle title={t(checkKey(c.id, 'title'))} sub={`${c.service} · ${t('acct.guided')}`} />
 
       <Card>
         <View style={{ gap: space.sm }}>
@@ -121,7 +110,7 @@ export default function AccountCheck() {
 
       <PrimaryButton label={t('common.next')} disabled={!choice} onPress={() => choice && save(choice)} />
       <SecondaryButton label={t('flow.skip')} onPress={() => save('skipped')} />
-      <SecondaryButton label={t('flow.stop')} onPress={leave} style={{ borderColor: colors.border }} />
+      <TonalButton label={t('flow.stop')} onPress={leave} />
     </Screen>
   );
 }

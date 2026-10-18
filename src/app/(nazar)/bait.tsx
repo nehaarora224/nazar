@@ -1,87 +1,127 @@
-import { router } from 'expo-router';
-import { FileLockIcon, PlusIcon } from 'phosphor-react-native';
-import { StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { EnvelopeSimpleIcon, FishSimpleIcon, PlusIcon } from 'phosphor-react-native';
+import { useCallback } from 'react';
+import { Text, View } from 'react-native';
 
+import { reviewKey, SEND_TONE, sendLabel, useReviewEvent } from '../../components/BaitParts';
 import { Screen } from '../../components/Screen';
+import { Empty, InfoBox, ListCard, ListRow, PageTitle, PrimaryButton, SampleBadge, SampleBanner, SecondaryButton, Stats, StatusLine, SubHeader } from '../../components/ui';
+import { baitServiceConfigured, fetchLinkEvents } from '../../baitService';
 import { BAIT_ICON } from '../../content/baits';
-import { Card, IconChip, InfoBox, Pill, PrimaryButton, SecondaryButton, SectionTitle, Stats, SubHeader } from '../../components/ui';
+import { tplKey } from '../../content/templates';
 import { useT } from '../../i18n';
-import { baitSummary, Bait, countedEvents, useStore } from '../../store';
-import { colors, radius, space, type } from '../../theme';
+import { useStore } from '../../store';
+import { colors, space, type } from '../../theme';
+import { baitSummary, BaitView, counts, useView } from '../../view';
 
-/** Bait Test management: the real state of every bait and the opens it actually recorded. */
+/** Bait Test: email baits and calculator decoys, their real activity, and labelled samples. */
 export default function BaitTest() {
-  const { data, status } = useStore();
+  const { data, status, mergeLinkEvents } = useStore();
+  const v = useView();
   const { t, when } = useT();
-  const s = baitSummary(data);
+  const s = baitSummary(v);
   const unknown = status !== 'ready';
+  const email = v.baits.filter((b) => b.kind === 'email');
+  const decoys = v.baits.filter((b) => b.kind === 'decoy');
+  const review = useReviewEvent();
+  const toReview = v.events.filter((e) => !e.review || e.review === 'unsure').sort((a, b) => b.at - a.at);
+
+  // Pull link events for sent baits whenever this page opens (only if a service is configured).
+  useFocusEffect(
+    useCallback(() => {
+      if (!baitServiceConfigured) return;
+      data.emailBaits
+        .filter((b) => b.remoteId && b.send.status === 'sent')
+        .forEach((b) => fetchLinkEvents(b.remoteId!).then((list) => list && mergeLinkEvents(b.id, list)));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data.emailBaits.length]),
+  );
+
+  const row = (b: BaitView, i: number) => {
+    const ev = v.events.filter((e) => e.baitId === b.id);
+    const counted = ev.filter(counts);
+    const latest = counted.reduce<number | undefined>((m, e) => (m === undefined || e.at > m ? e.at : m), undefined);
+    const typeLabel = b.kind === 'email' ? t(tplKey(b.template!, 'name')) : t(`bait.type.${b.decoyType!}`);
+    const statusTone = !b.active ? 'off' : b.kind === 'email' ? SEND_TONE[b.send?.status ?? 'not_sent'] : 'safe';
+    // Email baits show their real send state; only a sent one is live.
+    const statusLabel = !b.active ? t('bait.status.inactive') : b.kind === 'email' ? sendLabel(b, t, when) : t('bait.status.active');
+    return (
+      <ListRow
+        key={b.id}
+        first={i === 0}
+        icon={b.kind === 'email' ? EnvelopeSimpleIcon : BAIT_ICON[b.decoyType!]}
+        title={b.name}
+        status={<StatusLine t={statusTone} label={statusLabel} sample={b.sample} />}
+        desc={`${typeLabel} · ${t('bait.created', { when: when(b.createdAt) })}`}
+        meta={latest ? t('bait.latest', { when: when(latest) }) : b.kind === 'email' ? t('bait.noLinkEvents') : t('bait.latestNone')}
+        onPress={() => router.navigate({ pathname: '/bait-detail', params: { id: b.id } })}
+      />
+    );
+  };
 
   return (
     <Screen header={<SubHeader title={t('bait.title')} />}>
-      <Text style={type.display} accessibilityRole="header">
-        {t('bait.title')}
-      </Text>
-      <Text style={type.body}>{t('bait.intro')}</Text>
-
+      <PageTitle title={t('bait.title')} sub={t('bait.intro')} />
+      <SampleBanner />
       <Stats
         items={[
-          { label: t('baitW.statActive'), value: unknown ? '—' : s.active.length },
-          { label: t('baitW.statToday'), value: unknown ? '—' : s.today.length, t: s.today.length ? 'act' : undefined },
-          { label: t('baitW.statLatest'), value: unknown ? '—' : s.latest ? when(s.latest.at) : t('common.none') },
+          { label: t('baitW.activeBaits'), value: unknown ? '—' : s.active.length },
+          { label: t('baitW.openedToday'), value: unknown ? '—' : s.today.length, t: s.today.length ? 'act' : undefined },
+          { label: t('bait.toReview'), value: unknown ? '—' : toReview.length, t: toReview.length ? 'look' : undefined },
         ]}
       />
+      {!baitServiceConfigured && <InfoBox kind="warn" title={t('bait.serviceOffTitle')} body={t('bait.serviceOff')} />}
 
-      <SectionTitle>{t('bait.list')}</SectionTitle>
-      {data.baits.length === 0 ? (
-        <View style={styles.empty}>
-          <IconChip icon={FileLockIcon} size={48} radius={16} iconSize={24} bg={colors.lavender} />
-          <Text style={type.title}>{t('bait.empty.title')}</Text>
-          <Text style={[type.body, { textAlign: 'center' }]}>{t('bait.empty.body')}</Text>
-          <PrimaryButton icon={PlusIcon} label={t('baitW.setFirst').replace('+ ', '')} onPress={() => router.navigate('/bait-new')} style={{ alignSelf: 'stretch' }} />
+      {toReview.length > 0 && (
+        <ListCard title={t('bait.reviewList')} count={toReview.length}>
+          {toReview.slice(0, 3).map((e, i) => {
+            const b = v.baitOf(e.baitId);
+            return (
+              <ListRow
+                key={e.id}
+                first={i === 0}
+                icon={FishSimpleIcon}
+                iconBg={colors.statAlert}
+                iconFg={colors.actFg}
+                title={t(e.kind === 'link' ? 'tl.opened' : 'tl.openedDecoy')}
+                status={<StatusLine t="look" label={t(reviewKey(e))} sample={e.sample} />}
+                desc={`“${b?.name ?? ''}”${e.detail ? ` · ${e.detail}` : ''}`}
+                meta={when(e.at)}
+                action={<SecondaryButton label={t('bd.review')} onPress={() => review(e)} style={{ minHeight: 40 }} />}
+              />
+            );
+          })}
+        </ListCard>
+      )}
+
+      {v.baits.length === 0 ? (
+        <View style={{ backgroundColor: colors.surface, borderRadius: 22 }}>
+          <Empty
+            icon={FishSimpleIcon}
+            title={t('bait.empty.title')}
+            body={t('baitW.empty')}
+            action={<PrimaryButton icon={PlusIcon} label={t('baitW.createFirst')} onPress={() => router.navigate('/bait-new')} style={{ alignSelf: 'stretch' }} />}
+          />
         </View>
       ) : (
         <>
-          {data.baits.map((b) => (
-            <BaitCard key={b.id} bait={b} />
-          ))}
-          <SecondaryButton icon={PlusIcon} label={t('baitW.setAnother').replace('+ ', '')} onPress={() => router.navigate('/bait-new')} />
+          <ListCard title={t('bait.emailList')} count={email.length}>
+            {email.length ? email.map(row) : <Text style={[type.body, { padding: space.lg }]}>{t('bait.emailEmpty')}</Text>}
+          </ListCard>
+          <ListCard title={t('bait.decoyList')} count={decoys.length}>
+            {decoys.length ? decoys.map(row) : <Text style={[type.body, { padding: space.lg }]}>{t('bait.decoyEmpty')}</Text>}
+          </ListCard>
+          <PrimaryButton icon={PlusIcon} label={t('baitW.createAnother')} onPress={() => router.navigate('/bait-new')} />
         </>
       )}
 
       <InfoBox title={t('bait.limits.title')} body={t('bait.limits.body')} />
+      {v.showSample && (
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <SampleBadge />
+          <Text style={[type.body, { fontSize: 13, flex: 1 }]}>{t('bait.sampleNote')}</Text>
+        </View>
+      )}
     </Screen>
   );
 }
-
-function BaitCard({ bait }: { bait: Bait }) {
-  const { data } = useStore();
-  const { t, when } = useT();
-  const events = countedEvents(data.baitEvents.filter((e) => e.baitId === bait.id));
-  const latest = events.reduce<number | undefined>((m, e) => (m === undefined || e.at > m ? e.at : m), undefined);
-  return (
-    <Card
-      onPress={() => router.navigate({ pathname: '/bait-detail', params: { id: bait.id } })}
-      label={`${bait.name}. ${t(`bait.type.${bait.type}`)}. ${bait.active ? t('bait.status.active') : t('bait.status.inactive')}`}
-    >
-      <View style={{ flexDirection: 'row', gap: space.md }}>
-        <IconChip icon={BAIT_ICON[bait.type]} size={42} radius={14} iconSize={20} bg={bait.active ? colors.lavender : colors.offIconBg} fg={bait.active ? colors.primary : colors.muted} />
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text style={type.label}>{bait.name}</Text>
-          <Text style={[type.body, { fontSize: 14 }]}>{t(`bait.type.${bait.type}`)}</Text>
-          <Text style={[type.body, { fontSize: 13 }]}>{t('bait.created', { when: when(bait.createdAt) })}</Text>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 2 }}>
-            <Pill t={bait.active ? 'safe' : 'off'} label={bait.active ? t('bait.status.active') : t('bait.status.inactive')} />
-            <Text style={[type.pill, { color: latest ? colors.actFg : colors.muted }]}>
-              {latest ? t('bait.latest', { when: when(latest) }) : t('bait.latestNone')}
-            </Text>
-          </View>
-          <Text style={[type.pill, { color: colors.primary, marginTop: 4 }]}>{t('bait.inspect')}</Text>
-        </View>
-      </View>
-    </Card>
-  );
-}
-
-const styles = StyleSheet.create({
-  empty: { alignItems: 'center', gap: space.sm, padding: space.xl, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
-});

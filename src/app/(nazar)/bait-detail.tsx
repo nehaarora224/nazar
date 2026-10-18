@@ -1,20 +1,40 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { LockSimpleIcon, PauseIcon, PlayIcon, TrashIcon } from 'phosphor-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { EyeIcon, PauseIcon, PlayIcon, TrashIcon } from 'phosphor-react-native';
+import { useCallback, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { EmailPreview, REVIEW_TONE, reviewKey, SEND_TONE, SendButton, sendLabel, useReviewEvent } from '../../components/BaitParts';
+import { useOverlay } from '../../components/Overlay';
 import { Screen } from '../../components/Screen';
-import { BAIT_ICON } from '../../content/baits';
-import { Card, card, ConfirmButton, IconChip, InfoBox, Pill, SecondaryButton, SectionTitle, SubHeader } from '../../components/ui';
+import { Card, ConfirmButton, InfoBox, ListCard, PageTitle, SampleBadge, SecondaryButton, StatusLine, SubHeader, TonalButton } from '../../components/ui';
+import { baitServiceConfigured, fetchLinkEvents, sendBaitEmail } from '../../baitService';
+import { tplKey } from '../../content/templates';
 import { useT } from '../../i18n';
-import { BaitEvent, useStore } from '../../store';
-import { colors, radius, space, type } from '../../theme';
+import { useStore } from '../../store';
+import { colors, fonts, space, Tone, type } from '../../theme';
+import { EventView, useView } from '../../view';
 
-/** One bait: its state, where it lives, and every open it actually recorded. */
+type Item = { key: string; at: number; title: string; body?: string; tone: Tone; event?: EventView };
+
+/** One bait: details, send status, preview, and its activity timeline with "Review event". */
 export default function BaitDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, setBaitActive, deleteBait } = useStore();
-  const { t, when } = useT();
-  const bait = data.baits.find((b) => b.id === id);
+  const { data, setBaitActive, deleteBait, setEmailSend, mergeLinkEvents } = useStore();
+  const v = useView();
+  const { t, when, dur } = useT();
+  const { openSheet, closeSheet, toast } = useOverlay();
+  const review = useReviewEvent();
+  const [busy, setBusy] = useState(false);
+  const bait = v.baits.find((b) => b.id === id);
+  const real = bait && !bait.sample ? data.emailBaits.find((b) => b.id === bait.id) : undefined;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (baitServiceConfigured && real?.remoteId && real.send.status === 'sent')
+        fetchLinkEvents(real.remoteId).then((list) => list && mergeLinkEvents(real.id, list));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [real?.id, real?.send.status]),
+  );
 
   if (!bait) {
     return (
@@ -24,98 +44,138 @@ export default function BaitDetail() {
     );
   }
 
-  const events = data.baitEvents.filter((e) => e.baitId === bait.id).sort((a, b) => b.at - a.at);
+  const isEmail = bait.kind === 'email';
+  const sendStatus = bait.send?.status ?? 'not_sent';
+  const events = v.events.filter((e) => e.baitId === bait.id);
+
+  const send = async () => {
+    if (!real) return;
+    setBusy(true);
+    setEmailSend(real.id, { status: 'sending' });
+    const res = await sendBaitEmail({ recipient: real.recipient, template: real.template, name: real.name, subject: t(tplKey(real.template, 'subject')), body: t(tplKey(real.template, 'body')) });
+    if (res.ok) {
+      setEmailSend(real.id, { status: 'sent', at: Date.now() }, res.remoteId);
+      toast(t('be.sentOk'));
+    } else {
+      setEmailSend(real.id, { status: res.reason === 'unavailable' ? 'unavailable' : 'failed', at: Date.now(), error: res.error });
+      toast(res.reason === 'unavailable' ? t('be.unavailableShort') : t('be.failedShort'));
+    }
+    setBusy(false);
+  };
+
+  // Timeline: newest first.
+  const items: Item[] = [
+    ...events.map((e) => ({
+      key: e.id,
+      at: e.at,
+      title: t(e.kind === 'link' ? 'tl.opened' : 'tl.openedDecoy'),
+      body: [e.detail, e.durationMs ? t('bd.openFor', { d: dur(e.durationMs) }) : undefined].filter(Boolean).join(' · ') || undefined,
+      tone: REVIEW_TONE[e.review ?? 'pending'],
+      event: e,
+    })),
+    ...(isEmail && bait.send?.at && sendStatus !== 'sending'
+      ? [
+          {
+            key: 'send',
+            at: bait.send.at,
+            title: t(sendStatus === 'sent' ? 'tl.sent' : sendStatus === 'unavailable' ? 'tl.unavailable' : 'tl.failed', { to: bait.recipient ?? '' }),
+            body: sendStatus === 'failed' ? bait.send.error : undefined,
+            tone: SEND_TONE[sendStatus],
+          },
+        ]
+      : []),
+    { key: 'created', at: bait.createdAt, title: t('tl.created'), tone: 'off' as Tone },
+  ].sort((a, b) => b.at - a.at);
+
+  const typeLabel = isEmail ? t(tplKey(bait.template!, 'name')) : t(`bait.type.${bait.decoyType!}`);
 
   return (
     <Screen header={<SubHeader title={t('bait.title')} onBack={() => router.navigate('/bait')} />}>
-      <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
-        <IconChip icon={BAIT_ICON[bait.type]} size={48} radius={16} iconSize={22} bg={colors.lavender} />
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={type.display} accessibilityRole="header">
-            {bait.name}
-          </Text>
-          <Pill t={bait.active ? 'safe' : 'off'} label={bait.active ? t('bait.status.active') : t('bait.status.inactive')} style={{ alignSelf: 'flex-start' }} />
-        </View>
+      <PageTitle title={bait.name} sub={typeLabel} />
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {(!isEmail || sendStatus === 'sent' || !bait.active) && (
+          <StatusLine t={bait.active ? 'safe' : 'off'} label={bait.active ? t('bait.status.active') : t('bait.status.inactive')} />
+        )}
+        {isEmail && <StatusLine t={SEND_TONE[sendStatus]} label={sendLabel(bait, t, when)} />}
+        {bait.sample && <SampleBadge />}
       </View>
+      {bait.sample && <InfoBox body={t('sample.readonly')} />}
 
       <Card>
         <View style={{ gap: space.md }}>
-          <KV label={t('bd.type')} value={t(`bait.type.${bait.type}`)} />
+          <KV label={t('bd.type')} value={typeLabel} />
+          {isEmail && <KV label={t('bd.recipient')} value={bait.recipient ?? ''} />}
           <KV label={t('bd.created')} value={when(bait.createdAt)} />
-          <KV label={t('bd.where')} value={t(`bn.where.${bait.type}`)} />
+          {!isEmail && <KV label={t('bd.where')} value={t(`bn.where.${bait.decoyType!}`)} />}
         </View>
       </Card>
 
-      <SectionTitle>{t('bd.events')}</SectionTitle>
-      {events.length === 0 ? <Text style={type.body}>{t('bd.eventsEmpty')}</Text> : events.map((e) => <EventRow key={e.id} event={e} />)}
+      {isEmail && !bait.sample && sendStatus !== 'sent' && (
+        <>
+          {sendStatus === 'unavailable' && <InfoBox kind="warn" title={t('send.unavailable')} body={t('be.unavailable')} />}
+          {sendStatus === 'failed' && <InfoBox kind="error" title={t('send.failed')} body={t('be.failed', { e: bait.send?.error ?? '' })} />}
+          {sendStatus === 'not_sent' && <InfoBox body={t('bd.draft')} />}
+          {busy || sendStatus === 'sending' ? (
+            <SecondaryButton label={t('send.sending')} disabled />
+          ) : sendStatus === 'unavailable' && !baitServiceConfigured ? null : (
+            <SendButton label={sendStatus === 'not_sent' ? t('be.send') : t('bd.resend')} recipient={bait.recipient ?? ''} onConfirm={send} />
+          )}
+        </>
+      )}
+      {isEmail && (
+        <TonalButton
+          icon={EyeIcon}
+          label={t('be.previewTitle')}
+          onPress={() =>
+            openSheet(
+              <>
+                <EmailPreview template={bait.template!} recipient={bait.recipient ?? ''} />
+                <TonalButton label={t('common.close')} onPress={closeSheet} />
+              </>,
+            )
+          }
+        />
+      )}
+
+      <ListCard title={t('bd.timeline')} count={events.length}>
+        {items.map((it, i) => (
+          <View key={it.key} style={[styles.tl, i > 0 && styles.tlDivider]}>
+            <View style={styles.tlRail}>
+              <View style={[styles.tlDot, { backgroundColor: it.tone === 'off' ? colors.checkOff : it.tone === 'act' ? colors.act : it.tone === 'look' ? colors.look : colors.safe }]} />
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={styles.tlTitle}>{it.title}</Text>
+              <Text style={styles.tlMeta}>{when(it.at)}</Text>
+              {it.body ? <Text style={type.body}>{it.body}</Text> : null}
+              {it.event && (
+                <>
+                  <StatusLine t={REVIEW_TONE[it.event.review ?? 'pending']} label={t(reviewKey(it.event))} sample={it.event.sample} />
+                  <SecondaryButton label={t('bd.review')} onPress={() => review(it.event!)} style={{ alignSelf: 'flex-start', minHeight: 40, marginTop: 4 }} />
+                </>
+              )}
+            </View>
+          </View>
+        ))}
+        {events.length === 0 && <Text style={[type.body, { paddingHorizontal: 16, paddingBottom: 14 }]}>{isEmail ? t('bd.noLinkYet') : t('bd.eventsEmpty')}</Text>}
+      </ListCard>
 
       <InfoBox title={t('bait.limits.title')} body={t('bait.limits.body')} />
 
-      <SecondaryButton
-        icon={bait.active ? PauseIcon : PlayIcon}
-        label={bait.active ? t('bd.pause') : t('bd.resume')}
-        onPress={() => setBaitActive(bait.id, !bait.active)}
-      />
-      <ConfirmButton
-        icon={TrashIcon}
-        label={t('bd.delete')}
-        confirmLabel={t('bd.deleteConfirm')}
-        onConfirm={() => {
-          deleteBait(bait.id);
-          router.navigate('/bait');
-        }}
-      />
-    </Screen>
-  );
-}
-
-function EventRow({ event }: { event: BaitEvent }) {
-  const { data, setEventWasMe, saveEvidence } = useStore();
-  const { t, when, dur } = useT();
-  const bait = data.baits.find((b) => b.id === event.baitId)!;
-  const saved = data.evidence.some((e) => e.kind === 'bait' && e.refId === event.id);
-
-  return (
-    <View style={[styles.event, event.wasMe && { opacity: 0.7 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={[styles.dot, { backgroundColor: event.wasMe ? colors.off : colors.act }]} />
-        <Text style={[type.label, { flex: 1 }]}>{when(event.at)}</Text>
-      </View>
-      <Text style={type.body}>{event.durationMs ? t('bd.openFor', { d: dur(event.durationMs) }) : t('bd.noDur')}</Text>
-      {event.wasMe ? (
-        <View style={styles.actions}>
-          <Text style={[type.pill, { color: colors.muted, flex: 1 }]}>{t('bd.markedMe')}</Text>
-          <Small label={t('bd.undo')} onPress={() => setEventWasMe(event.id, false)} />
-        </View>
-      ) : (
-        <View style={styles.actions}>
-          <Small label={t('bd.wasMe')} onPress={() => setEventWasMe(event.id, true)} />
-          <Small
-            icon
-            label={saved ? t('common.savedToVault') : t('common.saveToVault')}
-            disabled={saved}
-            onPress={() =>
-              saveEvidence({ kind: 'bait', refId: event.id, eventAt: event.at, baitName: bait.name, baitType: bait.type, durationMs: event.durationMs })
-            }
+      {!bait.sample && (
+        <>
+          <SecondaryButton icon={bait.active ? PauseIcon : PlayIcon} label={bait.active ? t('bd.pause') : t('bd.resume')} onPress={() => setBaitActive(bait.id, !bait.active)} />
+          <ConfirmButton
+            icon={TrashIcon}
+            label={t('bd.delete')}
+            confirmLabel={t('bd.deleteConfirm')}
+            onConfirm={() => {
+              deleteBait(bait.id);
+              router.navigate('/bait');
+            }}
           />
-        </View>
+        </>
       )}
-    </View>
-  );
-}
-
-function Small({ label, onPress, disabled, icon }: { label: string; onPress: () => void; disabled?: boolean; icon?: boolean }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => [styles.small, pressed && { backgroundColor: colors.lavender }, disabled && { opacity: 0.55 }]}
-    >
-      {icon && <LockSimpleIcon size={15} color={colors.primary} />}
-      <Text style={[type.pill, { color: colors.primary }]}>{label}</Text>
-    </Pressable>
+    </Screen>
   );
 }
 
@@ -129,17 +189,10 @@ function KV({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  event: { ...card, padding: 14, gap: 6, borderRadius: radius.md, boxShadow: 'none' },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  actions: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
-  small: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: 'rgba(75,63,160,0.25)',
-  },
+  tl: { flexDirection: 'row', gap: 12, marginHorizontal: 16, paddingVertical: 12 },
+  tlDivider: { borderTopWidth: 1, borderTopColor: 'rgba(31,28,46,0.07)' },
+  tlRail: { width: 12, alignItems: 'center', paddingTop: 5 },
+  tlDot: { width: 10, height: 10, borderRadius: 5 },
+  tlTitle: { fontFamily: fonts.medium, fontSize: 16, color: colors.ink },
+  tlMeta: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
 });

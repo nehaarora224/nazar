@@ -37,13 +37,13 @@ export function NazarEye({ size = 30 }: { size?: number }) {
 export function Wordmark() {
   return (
     <View style={styles.row}>
-      <NazarMark size={24} />
+      <NazarMark size={26} />
       <Text style={styles.word}>nazar</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  word: { fontFamily: fonts.medium, fontSize: 19, letterSpacing: -0.19, color: colors.primaryDeep },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  word: { fontFamily: fonts.medium, fontSize: 20, letterSpacing: -0.4, color: colors.primaryNight },
 });

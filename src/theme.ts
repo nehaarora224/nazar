@@ -18,6 +18,12 @@ export const colors = {
   lavenderSoft: '#EFECF9',
   lavenderPill: '#E3DEF4',
   lavenderPillPressed: '#CFC6EC',
+  langTrack: '#E6E1F3',
+  statTile: '#F2EFFA',
+  statAlert: '#F8ECE8',
+  warmRow: '#FBF6EF',
+  neutralBg: '#F1EEE8',
+  neutralFg: '#4A463F',
 
   teal: '#4FA9A1',
   tealDeep: '#3E8A82',
@@ -49,7 +55,7 @@ export const tone: Record<Tone, { dot: string; bg: string; fg: string; halo: str
   safe: { dot: colors.safe, bg: colors.safeBg, fg: colors.safeFg, halo: 'rgba(94,154,120,0.18)' },
   look: { dot: colors.look, bg: colors.lookBg, fg: colors.lookFg, halo: 'rgba(201,143,58,0.20)' },
   act: { dot: colors.act, bg: colors.actBg, fg: colors.actFg, halo: 'rgba(192,103,90,0.18)' },
-  off: { dot: colors.off, bg: colors.offBg, fg: colors.muted, halo: 'rgba(181,176,168,0.2)' },
+  off: { dot: colors.checkOff, bg: colors.neutralBg, fg: colors.neutralFg, halo: 'rgba(181,176,168,0.2)' },
 };
 
 export const fonts = {
@@ -76,14 +82,18 @@ export const type = {
 } satisfies Record<string, TextStyle>;
 
 export const shadow = {
-  card: '0px 10px 24px -16px rgba(46,38,112,0.30)',
-  soft: '0px 10px 24px -18px rgba(46,38,112,0.35)',
+  /** The Home design's card lift: a hairline plus a long soft shadow. */
+  card: '0px 1px 0px rgba(46,38,112,0.04), 0px 18px 36px -24px rgba(46,38,112,0.40)',
+  soft: '0px 1px 0px rgba(46,38,112,0.04), 0px 12px 28px -22px rgba(46,38,112,0.35)',
   button: '0px 14px 28px -12px rgba(75,63,160,0.6)',
 };
+
+/** Screen wash from the Home design: lavender at the top fading into cream. */
+export const screenWash = 'linear-gradient(180deg, #EEEAF7 0%, #F6F3EE 34%)';
 
 /** Spacing scale (dp). */
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 };
 /** Corner radii: chips, controls, cards. */
-export const radius = { sm: 12, md: 16, lg: 20, pill: 999 };
+export const radius = { sm: 14, md: 16, lg: 22, pill: 999 };
 /** Minimum tap target. */
 export const TAP = 44;

@@ -1,9 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowSquareOutIcon, LockSimpleIcon } from 'phosphor-react-native';
+import { ArrowSquareOutIcon } from 'phosphor-react-native';
 import { Linking, Text, View } from 'react-native';
 
+import { SaveToVaultButton } from '../../components/SaveToVault';
 import { Screen } from '../../components/Screen';
-import { Card, InfoBox, Pill, PrimaryButton, SecondaryButton, SubHeader } from '../../components/ui';
+import { Card, InfoBox, PageTitle, Pill, SecondaryButton, SubHeader } from '../../components/ui';
 import { ACCOUNT_CHECKS, checkKey } from '../../content/accountChecks';
 import { useT } from '../../i18n';
 import { useStore } from '../../store';
@@ -12,7 +13,7 @@ import { space, type } from '../../theme';
 /** Detail for one account check: what was found, why it matters, what is unknown, what to do. */
 export default function AccountItem() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, saveEvidence } = useStore();
+  const { data } = useStore();
   const { t, when } = useT();
   const idx = ACCOUNT_CHECKS.findIndex((c) => c.id === id);
   const c = ACCOUNT_CHECKS[idx];
@@ -37,11 +38,9 @@ export default function AccountItem() {
 
   return (
     <Screen header={<SubHeader title={t('acct.title')} />}>
-      <View style={{ gap: 6 }}>
-        <Text style={type.display} accessibilityRole="header">
-          {t(checkKey(c.id, 'title'))}
-        </Text>
-        {a?.status === 'review' && <Pill t="look" label={t('acct.status.review')} />}
+      <View style={{ gap: 8 }}>
+        <PageTitle title={t(checkKey(c.id, 'title'))} sub={`${c.service} · ${t('acct.guided')}`} />
+        {a?.status === 'review' && <Pill t="look" label={t('acct.status.review')} style={{ alignSelf: 'flex-start' }} />}
       </View>
 
       <Section title={t('item.found')}>
@@ -66,12 +65,7 @@ export default function AccountItem() {
       <InfoBox kind="warn" title={t('item.alert')} body={t('item.alertBody')} />
 
       {a?.status === 'review' && (
-        <PrimaryButton
-          icon={LockSimpleIcon}
-          label={saved ? t('common.savedToVault') : t('common.saveToVault')}
-          disabled={saved}
-          onPress={() => saveEvidence({ kind: 'account', refId: c.id, eventAt: a.at, checkId: c.id, note: a.note })}
-        />
+        <SaveToVaultButton saved={saved} item={{ kind: 'account', refId: c.id, eventAt: a.at, checkId: c.id, note: a.note }} />
       )}
       {c.url && <SecondaryButton icon={ArrowSquareOutIcon} label={t('flow.openPage')} onPress={() => Linking.openURL(c.url!)} />}
       <SecondaryButton

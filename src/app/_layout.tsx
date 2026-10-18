@@ -8,6 +8,7 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { DeviceFrame } from '../components/DeviceFrame';
+import { OverlayProvider } from '../components/Overlay';
 import { StoreProvider } from '../store';
 
 export default function RootLayout() {
@@ -18,6 +19,7 @@ export default function RootLayout() {
       <StoreProvider>
         <StatusBar style="dark" />
         <DeviceFrame>
+          <OverlayProvider>
           {loaded ? (
             <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
               <Stack.Screen name="index" />
@@ -28,6 +30,7 @@ export default function RootLayout() {
             // The calculator ground, so a cold start never flashes anything unusual.
             <View style={{ flex: 1, backgroundColor: '#F7F7F7' }} />
           )}
+          </OverlayProvider>
         </DeviceFrame>
       </StoreProvider>
     </SafeAreaProvider>

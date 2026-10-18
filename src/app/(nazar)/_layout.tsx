@@ -40,6 +40,8 @@ export default function NazarLayout() {
       <Tabs.Screen name="bait" />
       <Tabs.Screen name="bait-new" />
       <Tabs.Screen name="bait-detail" />
+      <Tabs.Screen name="session" />
+      <Tabs.Screen name="evidence" />
     </Tabs>
   );
 }

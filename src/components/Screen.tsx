@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useT } from '../i18n';
 import { useStore } from '../store';
-import { colors, space } from '../theme';
+import { colors, screenWash, space } from '../theme';
 import { ErrorBanner } from './ui';
 
 /**
@@ -12,8 +12,8 @@ import { ErrorBanner } from './ui';
  * scrolling body. The helpline row and tab bar come from the tab layout, below the scroll area,
  * so content never hides behind them.
  */
-export function Screen({ header, children, gap = space.md }: { header: ReactNode; children: ReactNode; gap?: number }) {
-  const { status, saveFailed } = useStore();
+export function Screen({ header, children, gap = 18 }: { header: ReactNode; children: ReactNode; gap?: number }) {
+  const { status, saveFailed, retryLoad } = useStore();
   const { t } = useT();
   return (
     <View style={styles.root}>
@@ -25,7 +25,7 @@ export function Screen({ header, children, gap = space.md }: { header: ReactNode
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {status === 'error' && <ErrorBanner text={t('common.loadError')} />}
+          {status === 'error' && <ErrorBanner text={t('common.loadError')} onRetry={retryLoad} />}
           {saveFailed && <ErrorBanner text={t('common.saveError')} />}
           {children}
         </ScrollView>
@@ -35,7 +35,7 @@ export function Screen({ header, children, gap = space.md }: { header: ReactNode
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.cream },
+  root: { flex: 1, backgroundColor: colors.cream, backgroundImage: screenWash },
   flex: { flex: 1 },
-  body: { paddingHorizontal: 18, paddingTop: space.xs, paddingBottom: space.xl },
+  body: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: space.xl },
 });

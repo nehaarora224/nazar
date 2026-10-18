@@ -12,7 +12,9 @@ import {
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { MainHeader, NoticePill } from '../../components/ui';
+import { useOverlay } from '../../components/Overlay';
+import { MainHeader, NoticePill, PageTitle, SampleBadge, SampleBanner, card } from '../../components/ui';
+import { useView } from '../../view';
 import { TKey, useT } from '../../i18n';
 import { useStore } from '../../store';
 import { colors, fonts, type } from '../../theme';
@@ -36,23 +38,50 @@ const STAGES: Stage[] = [
 
 /** Screen 07 — Safe Order Action Plan. */
 export default function Plan() {
-  const {
-    data: { planDone },
-    togglePlanStep,
-  } = useStore();
+  const { togglePlanStep } = useStore();
+  const v = useView();
+  const { toast } = useOverlay();
   const { t } = useT();
+  // Her own ticks once she has any; labelled sample progress before that.
+  const planDone = v.plan.done;
   const stageDone = (si: number) => STAGES[si].actions.every((_, ai) => planDone[`${si}-${ai}`]);
+  const all = STAGES.flatMap((st, si) => st.actions.map((a, ai) => ({ key: `${si}-${ai}`, text: a.text, mayNotice: a.mayNotice, stage: st.title })));
+  const doneCount = all.filter((a) => planDone[a.key]).length;
+  const next = all.find((a) => !planDone[a.key]);
+  const toggle = (key: string) => {
+    if (v.plan.sample) {
+      // Starting her own plan: the first tick replaces the sample progress.
+      togglePlanStep(key);
+      toast(t('plan.ownStarted'));
+    } else togglePlanStep(key);
+  };
 
   return (
     <Screen gap={14} header={<MainHeader />}>
-      <View style={{ gap: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <PathIcon size={16} color={colors.primary} />
-          <Text style={[type.label, { fontSize: 14, color: colors.primary }]}>{t('plan.label')}</Text>
+      <PageTitle kicker={t('plan.label')} title={t('plan.heading')} />
+      <SampleBanner />
+
+      <View style={styles.progress} accessibilityLabel={t('plan.progress', { done: doneCount, total: all.length })}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[type.label, { flex: 1 }]}>{t('plan.progress', { done: doneCount, total: all.length })}</Text>
+          {v.plan.sample && <SampleBadge />}
         </View>
-        <Text style={type.display} accessibilityRole="header">
-          {t('plan.heading')}
-        </Text>
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: `${(doneCount / all.length) * 100}%` }]} />
+        </View>
+        {next ? (
+          <View style={styles.next}>
+            <PathIcon size={18} color={colors.primary} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={type.overline}>{t('plan.nextUp')}</Text>
+              <Text style={type.bodyInk}>{t(next.text)}</Text>
+            </View>
+            <NoticePill mayNotice={next.mayNotice} />
+          </View>
+        ) : (
+          <Text style={type.body}>{t('plan.allDone')}</Text>
+        )}
+        {v.plan.sample && <Text style={[type.body, { fontSize: 14 }]}>{t('plan.sampleNote')}</Text>}
       </View>
 
       <View style={styles.banner}>
@@ -110,7 +139,7 @@ export default function Plan() {
                   return (
                     <Pressable
                       key={key}
-                      onPress={() => togglePlanStep(key)}
+                      onPress={() => toggle(key)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: ticked }}
                       accessibilityLabel={`${t(a.text)}. ${a.mayNotice ? t('pill.mayNotice') : t('pill.safe')}`}
@@ -136,6 +165,10 @@ export default function Plan() {
 }
 
 const styles = StyleSheet.create({
+  progress: { ...card, padding: 16, gap: 10 },
+  track: { height: 8, borderRadius: 4, backgroundColor: colors.lavender, overflow: 'hidden' },
+  fill: { height: 8, borderRadius: 4, backgroundColor: colors.primary },
+  next: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: colors.statTile },
   banner: {
     flexDirection: 'row',
     gap: 12,

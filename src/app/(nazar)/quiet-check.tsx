@@ -1,12 +1,14 @@
-import { CameraIcon, CaretDownIcon, GearSixIcon, Icon, LockSimpleIcon, MapPinIcon, MicrophoneIcon } from 'phosphor-react-native';
+import { CameraIcon, CaretDownIcon, GearSixIcon, Icon, MapPinIcon, MicrophoneIcon } from 'phosphor-react-native';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { card, Choice, IconChip, InfoBox, NoteInput, Pill, PrimaryButton, SecondaryButton, SectionTitle, SubHeader } from '../../components/ui';
-import { QUIET_AREAS, quietSummary } from '../../derive';
+import { SaveToVaultButton } from '../../components/SaveToVault';
+import { card, Choice, IconChip, InfoBox, NoteInput, PageTitle, Pill, PrimaryButton, SampleBadge, SampleBanner, SecondaryButton, SectionTitle, SubHeader, TonalButton } from '../../components/ui';
 import { TKey, useT } from '../../i18n';
+import type { Sampled } from '../../sample';
 import { latestQuiet, QuietArea, QuietEntry, useStore } from '../../store';
+import { QUIET_AREAS, quietState, useView } from '../../view';
 import { canOpenSystemSettings, openSystemSettings, platformKind } from '../../systemSettings';
 import { colors, radius, space, type } from '../../theme';
 
@@ -19,26 +21,23 @@ const AREA_ICON: Record<QuietArea, Icon> = { mic: MicrophoneIcon, camera: Camera
  */
 export default function QuietCheck() {
   const { data } = useStore();
+  const v = useView();
   const { t } = useT();
-  const s = quietSummary(data);
+  const realDone = QUIET_AREAS.filter((a) => latestQuiet(data.quietEntries, a)).length;
+  const s = quietState(data, v);
   const overall =
-    s.done === 0 ? t('quiet.overall.notStarted') : s.done < 3 ? t('quiet.overall.inProgress', { done: s.done }) : t('quiet.overall.done');
-  const entries = [...data.quietEntries].sort((a, b) => b.at - a.at);
+    realDone === 0 ? t('quiet.overall.notStarted') : realDone < 3 ? t('quiet.overall.inProgress', { done: realDone }) : t('quiet.overall.done');
+  const entries = [...v.quietEntries].sort((a, b) => b.at - a.at);
 
   return (
     <Screen header={<SubHeader title={t('quiet.title')} />}>
-      <View style={{ gap: 4 }}>
-        <Text style={type.display} accessibilityRole="header">
-          {t('quiet.title')}
-        </Text>
-        <Text style={[type.label, { color: colors.muted }]}>{t('quiet.sub')}</Text>
-      </View>
-      <Text style={type.body}>{t('quiet.intro')}</Text>
-      <Pill t={s.review ? 'look' : s.done === 3 ? 'safe' : 'off'} label={overall} style={{ alignSelf: 'flex-start' }} />
+      <PageTitle kicker={t('quiet.sub')} title={t('quiet.title')} sub={t('quiet.intro')} />
+      <SampleBanner />
+      <Pill t={realDone && s.review && !s.sample ? 'look' : realDone === 3 ? 'safe' : 'off'} label={overall} style={{ alignSelf: 'flex-start' }} />
       {platformKind === 'web' && <InfoBox kind="warn" body={t('quiet.webNote')} />}
 
       {QUIET_AREAS.map((a) => (
-        <AreaCard key={a} area={a} latest={latestQuiet(data.quietEntries, a)} />
+        <AreaCard key={a} area={a} latest={latestQuiet(data.quietEntries, a) ?? latestQuiet(v.quietEntries, a)} />
       ))}
 
       <SectionTitle>{t('quiet.timeline')}</SectionTitle>
@@ -56,7 +55,7 @@ export default function QuietCheck() {
   );
 }
 
-function AreaCard({ area, latest }: { area: QuietArea; latest?: QuietEntry }) {
+function AreaCard({ area, latest }: { area: QuietArea; latest?: QuietEntry & Sampled }) {
   const { addQuietEntry } = useStore();
   const { t, when } = useT();
   const [open, setOpen] = useState(false);
@@ -89,10 +88,13 @@ function AreaCard({ area, latest }: { area: QuietArea; latest?: QuietEntry }) {
         <IconChip icon={AREA_ICON[area]} size={42} radius={14} iconSize={21} />
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={type.title}>{name}</Text>
-          <Pill t={state.t} label={state.label} style={{ alignSelf: 'flex-start' }} />
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Pill t={state.t} label={state.label} />
+            {latest?.sample && <SampleBadge />}
+          </View>
         </View>
       </View>
-      {latest && <Text style={[type.body, { fontSize: 13 }]}>{`${t('common.recordedByYou')} · ${when(latest.at)}`}</Text>}
+      {latest && <Text style={[type.body, { fontSize: 13 }]}>{`${latest.sample ? t('sample.example') : t('common.recordedByYou')} · ${when(latest.at)}`}</Text>}
       <Text style={type.bodyInk}>{t(`quiet.${area}.why` as TKey)}</Text>
 
       <View style={styles.kv}>
@@ -136,7 +138,7 @@ function AreaCard({ area, latest }: { area: QuietArea; latest?: QuietEntry }) {
           <Choice label={t('quiet.review')} t="look" selected={choice === 'review'} onPress={() => setChoice('review')} />
           {choice === 'review' && <NoteInput value={note} onChange={setNote} placeholder={t('quiet.notePlaceholder')} />}
           <PrimaryButton label={t('quiet.save')} disabled={!choice} onPress={save} />
-          <SecondaryButton label={t('common.cancel')} onPress={() => setOpen(false)} style={{ borderColor: colors.border }} />
+          <TonalButton label={t('common.cancel')} onPress={() => setOpen(false)} />
         </View>
       ) : (
         <PrimaryButton label={t('quiet.record')} onPress={() => setOpen(true)} />
@@ -146,12 +148,12 @@ function AreaCard({ area, latest }: { area: QuietArea; latest?: QuietEntry }) {
 }
 
 /** One recorded observation. Tap to expand what it may and may not mean. */
-function TimelineEntry({ entry, last }: { entry: QuietEntry; last: boolean }) {
-  const { data, saveEvidence } = useStore();
+function TimelineEntry({ entry, last }: { entry: QuietEntry & Sampled; last: boolean }) {
+  const v = useView();
   const { t, when } = useT();
   const [open, setOpen] = useState(false);
   const review = entry.status === 'review';
-  const saved = data.evidence.some((e) => e.kind === 'quiet' && e.refId === entry.id);
+  const saved = v.isSaved('quiet', entry.id);
 
   return (
     <View style={styles.tlRow}>
@@ -168,7 +170,10 @@ function TimelineEntry({ entry, last }: { entry: QuietEntry; last: boolean }) {
         <Text style={type.label}>
           {t(`quiet.${entry.area}` as TKey)} · {review ? t('quiet.state.review') : t('quiet.state.ok')}
         </Text>
-        <Text style={[type.body, { fontSize: 13 }]}>{when(entry.at)}</Text>
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <Text style={[type.body, { fontSize: 13 }]}>{when(entry.at)}</Text>
+          {entry.sample && <SampleBadge />}
+        </View>
         {entry.note && <Text style={type.bodyInk}>“{entry.note}”</Text>}
         {open && (
           <View style={{ gap: space.sm, marginTop: space.sm }}>
@@ -177,14 +182,8 @@ function TimelineEntry({ entry, last }: { entry: QuietEntry; last: boolean }) {
             {review && <Detail title={t('quiet.find.mean')} body={t('quiet.find.meanBody')} />}
             <Detail title={t('quiet.find.cannot')} body={t('quiet.find.cannotBody')} />
             {review && <Detail title={t('quiet.find.next')} body={t('quiet.find.nextBody')} />}
-            {review && (
-              <PrimaryButton
-                icon={LockSimpleIcon}
-                label={saved ? t('common.savedToVault') : t('common.saveToVault')}
-                disabled={saved}
-                onPress={() => saveEvidence({ kind: 'quiet', refId: entry.id, eventAt: entry.at, area: entry.area, note: entry.note })}
-              />
-            )}
+            {review && !entry.sample && <SaveToVaultButton saved={saved} item={{ kind: 'quiet', refId: entry.id, eventAt: entry.at, area: entry.area, note: entry.note }} />}
+            {entry.sample && <Text style={[type.body, { fontSize: 14 }]}>{t('sample.readonly')}</Text>}
           </View>
         )}
       </Pressable>

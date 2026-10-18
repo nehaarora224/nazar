@@ -25,6 +25,8 @@ const PARENT_TAB: Record<string, string> = {
   bait: 'home',
   'bait-new': 'home',
   'bait-detail': 'home',
+  session: 'home',
+  evidence: 'vault',
 };
 
 export function NazarTabBar({ state, navigateToTab }: BottomTabBarProps) {
@@ -51,7 +53,7 @@ export function NazarTabBar({ state, navigateToTab }: BottomTabBarProps) {
               style={styles.tab}
             >
               <View style={[styles.indicator, on && { backgroundColor: colors.lavender }]}>
-                <I size={20} weight={on ? 'fill' : 'regular'} color={on ? colors.primary : colors.muted} />
+                <I size={21} weight={on ? 'fill' : 'regular'} color={on ? colors.primary : colors.muted} />
               </View>
               <Text style={[styles.label, on && styles.labelOn]}>{label}</Text>
             </Pressable>
@@ -63,17 +65,18 @@ export function NazarTabBar({ state, navigateToTab }: BottomTabBarProps) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { backgroundColor: colors.cream },
+  wrap: { backgroundImage: 'linear-gradient(180deg, rgba(246,243,238,0) 0%, #F6F3EE 30%)' },
   bar: {
     backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: colors.hairline,
+    borderTopColor: 'rgba(31,28,46,0.07)',
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingTop: 8,
+    minHeight: 64,
+    paddingTop: 7,
   },
-  tab: { alignItems: 'center', gap: 3, minWidth: 72, paddingBottom: 4 },
-  indicator: { width: 58, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  label: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, paddingBottom: 3 },
+  indicator: { width: 60, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  label: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
   labelOn: { fontFamily: fonts.semibold, color: colors.primary },
 });
