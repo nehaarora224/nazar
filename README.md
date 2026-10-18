@@ -14,6 +14,8 @@ npm run typecheck
 
 To build an installable Android APK in the cloud, run `npx eas-cli@latest build -p android --profile preview` (this needs an Expo account).
 
+**Web demo (Vercel):** `vercel.json` builds the web version with `npx expo export --platform web` into `dist/` and sends every route to `index.html`. Import the repo in Vercel and leave Framework Preset as "Other". In a desktop browser the app stays at phone width.
+
 ## How it works
 
 | # | Screen | Route | What you can do |
