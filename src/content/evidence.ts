@@ -1,4 +1,4 @@
-import { BluetoothIcon, EnvelopeSimpleIcon, FileLockIcon, FootprintsIcon, Icon, PulseIcon, UserCircleIcon } from 'phosphor-react-native';
+import { BluetoothIcon, EnvelopeSimpleIcon, FileLockIcon, FootprintsIcon, Icon, NotePencilIcon, PulseIcon, UserCircleIcon } from 'phosphor-react-native';
 
 import type { TKey } from '../i18n/en';
 import type { Evidence } from '../store';
@@ -13,6 +13,7 @@ export const KIND_ICON: Record<Evidence['kind'], Icon> = {
   quiet: PulseIcon,
   audit: FootprintsIcon,
   ble: BluetoothIcon,
+  note: NotePencilIcon,
 };
 
 export const SOURCE_KEY: Record<Evidence['kind'], TKey> = {
@@ -23,6 +24,7 @@ export const SOURCE_KEY: Record<Evidence['kind'], TKey> = {
   quiet: 'vault.source.quiet',
   audit: 'vault.source.audit',
   ble: 'vault.source.ble',
+  note: 'vault.source.note',
 };
 
 type T = (k: TKey, p?: Record<string, string | number>) => string;
@@ -44,6 +46,8 @@ export function evidenceTitle(e: Evidence, t: T) {
       return e.title;
     case 'ble':
       return e.name || t('ble.unnamed');
+    case 'note':
+      return e.title;
   }
 }
 
@@ -56,6 +60,8 @@ export function evidenceDetail(e: Evidence, t: T, dur: (ms: number) => string) {
       return [t(tplKey(e.template, 'name')), e.detail ?? ''].filter(Boolean);
     case 'tracker':
       return [e.trackerType ? t(`trk.type.${e.trackerType}` as TKey) : '', e.note ? `“${e.note}”` : ''].filter(Boolean);
+    case 'note':
+      return [t(`vault.cat.${e.category}` as TKey), e.note ? `“${e.note}”` : ''].filter(Boolean);
     default:
       return e.note ? [`“${e.note}”`] : [];
   }

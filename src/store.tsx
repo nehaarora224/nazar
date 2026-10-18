@@ -103,7 +103,12 @@ export type Evidence = EvidenceBase &
     | { kind: 'quiet'; area: QuietArea; note?: string }
     | { kind: 'audit'; module: AuditModuleId; title: string; note?: string }
     | { kind: 'ble'; name?: string; rssi?: number; note?: string }
+    // A record the person added to the Vault by hand.
+    | { kind: 'note'; title: string; category: ManualCategory; note?: string }
   );
+
+/** Categories offered when adding a Vault record by hand. */
+export type ManualCategory = 'incident' | 'bait' | 'tracker' | 'account' | 'audit' | 'other';
 
 type Data = {
   version: 2;
