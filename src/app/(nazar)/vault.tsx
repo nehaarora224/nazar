@@ -1,79 +1,103 @@
+import { router } from 'expo-router';
 import {
+  BluetoothIcon,
   CloudSlashIcon,
   DeviceMobileIcon,
-  FilePdfIcon,
-  FishSimpleIcon,
+  FileLockIcon,
   Icon,
-  ImageSquareIcon,
   LockSimpleIcon,
-  PaperPlaneTiltIcon,
-  PathIcon,
-  SealCheckIcon,
-  ShieldCheckIcon,
+  PulseIcon,
+  ShareNetworkIcon,
   UserCircleIcon,
 } from 'phosphor-react-native';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { IconChip, PrimaryButton } from '../../components/ui';
-import { colors, fonts, shadow, type } from '../../theme';
+import { card, ConfirmButton, IconChip, InfoBox, MainHeader, PrimaryButton } from '../../components/ui';
+import { checkKey } from '../../content/accountChecks';
+import { TKey, useT } from '../../i18n';
+import { Evidence, useStore } from '../../store';
+import { platformKind } from '../../systemSettings';
+import { colors, fonts, radius, space, type } from '../../theme';
 
-type Kind = 'bait' | 'tracker' | 'signin' | 'shot';
-type Item = { day: 'Today' | 'Yesterday'; kind: Kind; icon: Icon; title: string; meta: string };
-
-const FILTERS: { label: string; kind?: Kind }[] = [
-  { label: 'All' },
-  { label: 'Bait catches', kind: 'bait' },
-  { label: 'Trackers', kind: 'tracker' },
-  { label: 'Sign-ins', kind: 'signin' },
-  { label: 'Screenshots', kind: 'shot' },
+type Kind = Evidence['kind'];
+const FILTERS: { label: TKey; kind?: Kind }[] = [
+  { label: 'vault.f.all' },
+  { label: 'vault.f.bait', kind: 'bait' },
+  { label: 'vault.f.tracker', kind: 'tracker' },
+  { label: 'vault.f.account', kind: 'account' },
+  { label: 'vault.f.quiet', kind: 'quiet' },
 ];
+const KIND_ICON: Record<Kind, Icon> = { bait: FileLockIcon, tracker: BluetoothIcon, account: UserCircleIcon, quiet: PulseIcon };
 
-const ITEMS: Item[] = [
-  { day: 'Today', kind: 'bait', icon: FishSimpleIcon, title: 'Bait opened — Passwords note', meta: '11:42 PM · Photo attached' },
-  { day: 'Today', kind: 'tracker', icon: PathIcon, title: 'Tracker path report — 4 stops', meta: '6:10 PM' },
-  { day: 'Today', kind: 'signin', icon: UserCircleIcon, title: 'New sign-in on Google — Chrome, Noida', meta: '2:05 PM' },
-  { day: 'Yesterday', kind: 'shot', icon: ImageSquareIcon, title: 'Screenshot — threatening message', meta: 'Yesterday 9:30 PM' },
-];
-
-/** Screen 06 — Evidence Vault. */
+/** Evidence Vault: only what she chose to save, kept on this device. */
 export default function Vault() {
+  const { data } = useStore();
+  const { t, tn, when, dur } = useT();
   const [filter, setFilter] = useState(0);
+  const [shareFailed, setShareFailed] = useState(false);
+  const web = platformKind === 'web';
+
   const kind = FILTERS[filter].kind;
-  const items = ITEMS.filter((r) => !kind || r.kind === kind);
-  const groups = (['Today', 'Yesterday'] as const)
-    .map((day) => ({ day, rows: items.filter((r) => r.day === day) }))
-    .filter((g) => g.rows.length);
+  const items = [...data.evidence].filter((e) => !kind || e.kind === kind).sort((a, b) => b.eventAt - a.eventAt);
+  const lastSaved = data.evidence.reduce((m, e) => Math.max(m, e.savedAt), 0);
+
+  const title = (e: Evidence) =>
+    e.kind === 'bait'
+      ? t('vault.row.bait', { name: e.baitName })
+      : e.kind === 'tracker'
+        ? t(`trk.cls.${e.result}` as TKey)
+        : e.kind === 'account'
+          ? t(checkKey(e.checkId, 'title'))
+          : t('vault.row.quiet', { area: t(`quiet.${e.area}` as TKey) });
+  const detail = (e: Evidence) => {
+    if (e.kind === 'bait') return [t(`bait.type.${e.baitType}`), e.durationMs ? t('bd.openFor', { d: dur(e.durationMs) }) : t('bd.noDur')];
+    if (e.kind === 'tracker') return [e.trackerType ? t(`trk.type.${e.trackerType}` as TKey) : '', e.note ? `“${e.note}”` : ''].filter(Boolean);
+    return e.note ? [`“${e.note}”`] : [];
+  };
+
+  const share = async () => {
+    const all = [...data.evidence].sort((a, b) => a.eventAt - b.eventAt);
+    const lines = [
+      t('vault.report.title'),
+      t('vault.report.created', { when: when(Date.now()) }),
+      '',
+      ...all.flatMap((e, i) => [`${i + 1}. ${title(e)}`, `   ${t('vault.happened', { when: when(e.eventAt) })}`, ...detail(e).map((d) => `   ${d}`), '']),
+    ];
+    try {
+      await Share.share({ message: lines.join('\n'), title: t('vault.report.title') });
+      setShareFailed(false);
+    } catch {
+      setShareFailed(true);
+    }
+  };
 
   return (
-    <Screen
-      gap={8}
-      padTop={0}
-      background="linear-gradient(180deg, #EFECF7 0%, #F6F3EE 30%)"
-      header={
-        <>
-          <IconChip icon={LockSimpleIcon} size={40} radius={14} weight="fill" bg={colors.primary} fg={colors.onPrimary} />
-          <Text style={styles.title}>Vault</Text>
-        </>
-      }
-    >
+    <Screen header={<MainHeader />} gap={space.sm}>
+      <View style={styles.titleRow}>
+        <IconChip icon={LockSimpleIcon} size={40} radius={14} weight="fill" bg={colors.primary} fg={colors.onPrimary} />
+        <Text style={styles.title} accessibilityRole="header">
+          {t('vault.title')}
+        </Text>
+      </View>
       <View style={styles.reassure}>
-        <ShieldCheckIcon size={14} weight="fill" color={colors.safeFg} />
-        <Text style={[type.pill, { color: colors.safeFg }]}>Encrypted · hidden from Gallery & Files</Text>
+        <LockSimpleIcon size={14} weight="fill" color={colors.safeFg} />
+        <Text style={[type.pill, { color: colors.safeFg }]}>{web ? t('vault.chipWeb') : t('vault.chip')}</Text>
       </View>
 
       <View style={{ gap: 4 }}>
-        <Text style={styles.heading}>Your proof, kept safe.</Text>
-        <Text style={type.body}>Everything Nazar has seen, timestamped and untouched.</Text>
+        <Text style={styles.heading}>{t('vault.heading')}</Text>
+        <Text style={type.body}>{t('vault.sub')}</Text>
       </View>
 
       <View style={styles.summary}>
-        <Text style={type.label}>23 items · last added 11:42 PM</Text>
-        <View style={{ gap: 2 }}>
-          <Meta icon={DeviceMobileIcon} text="Stored only on this phone" />
-          <Meta icon={CloudSlashIcon} text="Backup: off — your choice" />
-        </View>
+        <Text style={type.label}>
+          {tn('vault.count', data.evidence.length)}
+          {lastSaved ? ` · ${t('vault.lastAdded', { when: when(lastSaved) })}` : ''}
+        </Text>
+        <Meta icon={DeviceMobileIcon} text={web ? t('vault.chipWeb') : t('vault.chip')} />
+        <Meta icon={CloudSlashIcon} text={web ? t('vault.backupWeb') : t('vault.backup')} />
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filtersInner}>
@@ -87,46 +111,65 @@ export default function Vault() {
               accessibilityState={{ selected: on }}
               style={[styles.chip, on ? styles.chipOn : styles.chipOff]}
             >
-              <Text style={[type.pill, { color: on ? colors.onPrimary : colors.primaryDeep }]}>{f.label}</Text>
+              <Text style={[type.pill, { color: on ? colors.onPrimary : colors.primaryDeep }]}>{t(f.label)}</Text>
             </Pressable>
           );
         })}
       </ScrollView>
 
-      <View style={{ gap: 8 }}>
-        {groups.map((g) => (
-          <View key={g.day} style={{ gap: 4 }}>
-            <Text style={type.overline}>{g.day}</Text>
-            <View style={styles.group}>
-              {g.rows.map((r, i) => (
-                <View key={r.title} style={[styles.row, i > 0 && styles.rowBorder]}>
-                  <IconChip icon={r.icon} size={32} iconSize={18} />
-                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Text style={[type.label, { fontSize: 15, lineHeight: 20 }]}>{r.title}</Text>
-                    <View style={styles.metaLine}>
-                      <Text style={type.body}>{r.meta}</Text>
-                      <View style={styles.verified}>
-                        <SealCheckIcon size={14} weight="fill" color={colors.safe} />
-                        <Text style={[type.pill, { color: colors.safeFg }]}>Verified</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        ))}
-      </View>
+      {items.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={type.title}>{t('vault.empty.title')}</Text>
+          <Text style={[type.body, { textAlign: 'center' }]}>{t('vault.empty.body')}</Text>
+        </View>
+      ) : (
+        items.map((e) => <Row key={e.id} e={e} title={title(e)} detail={detail(e)} />)
+      )}
 
-      <View style={{ gap: 4 }}>
-        <PrimaryButton label="Export report" icon={FilePdfIcon} height={50} style={{ borderRadius: 18 }} />
-        <Text style={[type.body, { textAlign: 'center' }]}>One PDF for police, a lawyer or a counsellor — dated and verified</Text>
-        <Pressable accessibilityRole="link" style={styles.send}>
-          <PaperPlaneTiltIcon size={16} color={colors.primary} />
-          <Text style={styles.sendText}>Send to a trusted person</Text>
-        </Pressable>
-      </View>
+      {data.evidence.length > 0 && (
+        <View style={{ gap: 4, marginTop: space.sm }}>
+          <PrimaryButton icon={ShareNetworkIcon} label={t('vault.share')} onPress={share} />
+          <Text style={[type.body, { textAlign: 'center' }]}>{t('vault.shareSub')}</Text>
+          {shareFailed && <InfoBox kind="warn" body={t('vault.shareFail')} />}
+        </View>
+      )}
     </Screen>
+  );
+}
+
+function Row({ e, title, detail }: { e: Evidence; title: string; detail: string[] }) {
+  const { removeEvidence } = useStore();
+  const { t, when } = useT();
+  const [open, setOpen] = useState(false);
+  const source = () => {
+    if (e.kind === 'bait') router.navigate('/bait');
+    else if (e.kind === 'tracker') router.navigate({ pathname: '/tracker-detail', params: { id: e.refId } });
+    else if (e.kind === 'account') router.navigate({ pathname: '/account-item', params: { id: e.checkId } });
+    else router.navigate('/quiet-check');
+  };
+  return (
+    <View style={styles.row}>
+      <Pressable onPress={() => setOpen((o) => !o)} accessibilityRole="button" accessibilityState={{ expanded: open }} style={styles.rowMain}>
+        <IconChip icon={KIND_ICON[e.kind]} size={34} iconSize={18} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[type.label, { fontSize: 15 }]}>{title}</Text>
+          <Text style={[type.body, { fontSize: 14 }]}>{t('vault.happened', { when: when(e.eventAt) })}</Text>
+          {detail.map((d) => (
+            <Text key={d} style={[type.body, { fontSize: 14 }]}>
+              {d}
+            </Text>
+          ))}
+        </View>
+      </Pressable>
+      {open && (
+        <View style={{ gap: space.sm }}>
+          <Pressable onPress={source} accessibilityRole="link" style={styles.link}>
+            <Text style={[type.pill, { color: colors.primary }]}>{t('bait.inspect')}</Text>
+          </Pressable>
+          <ConfirmButton label={t('vault.remove')} confirmLabel={t('vault.removeConfirm')} onConfirm={() => removeEvidence(e.id)} />
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -134,13 +177,14 @@ function Meta({ icon: I, text }: { icon: Icon; text: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <I size={17} color={colors.primary} />
-      <Text style={type.body}>{text}</Text>
+      <Text style={[type.body, { flex: 1 }]}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { fontFamily: fonts.medium, fontSize: 20, letterSpacing: -0.2, color: colors.ink },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { fontFamily: fonts.medium, fontSize: 22, letterSpacing: -0.2, color: colors.ink },
   reassure: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -148,21 +192,18 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 5,
     paddingHorizontal: 11,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.safeBg,
   },
-  heading: { fontFamily: fonts.medium, fontSize: 24, lineHeight: 28, letterSpacing: -0.48, color: colors.ink },
-  summary: { gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.surface, boxShadow: shadow.soft },
+  heading: { fontFamily: fonts.medium, fontSize: 22, lineHeight: 28, letterSpacing: -0.4, color: colors.ink },
+  summary: { ...card, gap: 6, paddingVertical: 12, paddingHorizontal: 14, boxShadow: 'none' },
   filters: { marginRight: -18, flexGrow: 0 },
   filtersInner: { gap: 6, paddingRight: 18 },
-  chip: { height: 32, paddingHorizontal: 13, borderRadius: 999, justifyContent: 'center' },
+  chip: { minHeight: 36, paddingHorizontal: 14, borderRadius: radius.pill, justifyContent: 'center' },
   chipOn: { backgroundColor: colors.primary },
   chipOff: { backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(75,63,160,0.18)' },
-  group: { borderRadius: 18, backgroundColor: colors.surface, overflow: 'hidden', boxShadow: '0px 10px 24px -20px rgba(46,38,112,0.35)' },
-  row: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 7, paddingHorizontal: 14 },
-  rowBorder: { borderTopWidth: 1, borderTopColor: colors.hairline },
-  metaLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  verified: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  send: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 },
-  sendText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.primary },
+  empty: { alignItems: 'center', gap: space.sm, padding: space.xl, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline },
+  row: { ...card, borderRadius: radius.md, padding: 12, gap: space.sm, boxShadow: 'none' },
+  rowMain: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  link: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', paddingHorizontal: 4 },
 });

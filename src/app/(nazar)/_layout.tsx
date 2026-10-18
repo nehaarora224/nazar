@@ -1,9 +1,11 @@
+import { Redirect } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import { NazarTabBar } from '../../components/TabBar';
 import { quickExit } from '../../components/ui';
+import { session } from '../../session';
 import { colors } from '../../theme';
 
 export default function NazarLayout() {
@@ -14,6 +16,9 @@ export default function NazarLayout() {
     });
     return () => sub.remove();
   }, []);
+
+  // Never reachable by URL, reload or deep link: only through the calculator code.
+  if (!session.isUnlocked()) return <Redirect href="/" />;
 
   return (
     <Tabs
@@ -26,8 +31,15 @@ export default function NazarLayout() {
       <Tabs.Screen name="vault" />
       <Tabs.Screen name="plan" />
       {/* Detail screens: routable, but NazarTabBar only draws the four tabs above. */}
+      <Tabs.Screen name="accounts" />
+      <Tabs.Screen name="account-check" />
+      <Tabs.Screen name="account-item" />
+      <Tabs.Screen name="quiet-check" />
       <Tabs.Screen name="tracker" />
+      <Tabs.Screen name="tracker-detail" />
       <Tabs.Screen name="bait" />
+      <Tabs.Screen name="bait-new" />
+      <Tabs.Screen name="bait-detail" />
     </Tabs>
   );
 }

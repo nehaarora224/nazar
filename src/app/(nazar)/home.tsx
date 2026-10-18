@@ -1,177 +1,267 @@
-import { Href, router } from 'expo-router';
-import { BluetoothIcon, Icon, MagnifyingGlassIcon, ShieldCheckIcon, SquaresFourIcon, UserCircleIcon } from 'phosphor-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { router } from 'expo-router';
+import { BluetoothIcon, CaretRightIcon, FileLockIcon, Icon, LockSimpleIcon, PulseIcon, UserCircleIcon } from 'phosphor-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
-import { NazarEye, Wordmark } from '../../components/Logo';
+import { useScreenSize } from '../../components/DeviceFrame';
 import { Screen } from '../../components/Screen';
-import { card, Dot, IconChip, PrimaryButton } from '../../components/ui';
-import { RING, Tile, TILES, useNazar } from '../../state';
-import { colors, fonts, tone, Tone, type } from '../../theme';
+import { card, Dot, IconChip, MainHeader } from '../../components/ui';
+import { accountSummary, quietSummary, TRACKER_TONE } from '../../derive';
+import { TKey, useT } from '../../i18n';
+import { baitSummary, latestTracker, useStore } from '../../store';
+import { colors, fonts, radius, space, Tone, type } from '../../theme';
 
-const CIRCUMFERENCE = 578; // 2π × 92
-const TILE_ICON: Record<Tile['key'], Icon> = {
-  apps: SquaresFourIcon,
-  accounts: UserCircleIcon,
-  trackers: BluetoothIcon,
-  background: ShieldCheckIcon,
-};
-const TILE_HREF: Record<Tile['key'], Href> = {
-  apps: '/exposure',
-  accounts: '/vault',
-  trackers: '/tracker',
-  background: '/bait',
-};
-
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-}
-
-/** Screen 02 — Safety Dashboard. One glance, one ring, one button. */
+/** Home: the hub for Nazar's tools. No scores or gauges — only what has actually been checked. */
 export default function Home() {
-  const { dashboard, cycleDashboard } = useNazar();
-  const ring = RING[dashboard];
-  const [scanPct, setScanPct] = useState<number | null>(null);
-  const interval = useRef<ReturnType<typeof setInterval>>(undefined);
+  const { data } = useStore();
+  const { t, tn, when } = useT();
+  const { width } = useScreenSize();
+  const twoCol = width >= 360;
 
-  useEffect(() => () => clearInterval(interval.current), []);
+  const acct = accountSummary(data);
+  const acctStatus: [string, Tone] = !acct.started
+    ? [t('acctCard.none'), 'off']
+    : acct.review > 0
+      ? [tn('acctCard.review', acct.review), 'look']
+      : acct.done === acct.total
+        ? [t('acctCard.clear'), 'safe']
+        : [t('acctCard.progress', { done: acct.done, total: acct.total }), 'off'];
 
-  function startScan() {
-    if (scanPct != null) return;
-    const t0 = Date.now();
-    setScanPct(0);
-    clearInterval(interval.current);
-    interval.current = setInterval(() => {
-      const p = Math.min(1, (Date.now() - t0) / 2200);
-      setScanPct(ring.pct * (1 - Math.pow(1 - p, 3)));
-      if (p >= 1) {
-        clearInterval(interval.current);
-        setScanPct(null);
-      }
-    }, 30);
-  }
+  const quiet = quietSummary(data);
+  const quietStatus: [string, Tone] =
+    quiet.done === 0
+      ? [t('quietCard.none'), 'off']
+      : quiet.review > 0
+        ? [tn('quietCard.review', quiet.review), 'look']
+        : quiet.done < 3
+          ? [t('quietCard.progress', { done: quiet.done }), 'off']
+          : [t('quietCard.done', { when: when(quiet.lastAt) }), 'safe'];
 
-  const scanning = scanPct != null;
-  const shown = scanning ? scanPct : ring.pct;
-  const view: { label: string; sub: string; t: Tone | 'scan' } = scanning
-    ? { label: `${Math.round(shown * 100)}%`, sub: 'Checking quietly…', t: 'scan' }
-    : ring;
-  const pill =
-    view.t === 'scan' ? { bg: colors.lavender, fg: colors.primaryDeep, dot: colors.primary } : { ...tone[view.t] };
+  const trk = latestTracker(data.trackerEntries);
+  const trkStatus: [string, Tone] = trk
+    ? [t('trackerCard.last', { result: t(`trk.cls.${trk.result}` as TKey), when: when(trk.at) }), TRACKER_TONE[trk.result]]
+    : [t('trackerCard.none'), 'off'];
+
+  const ev = data.evidence.length;
 
   return (
-    <Screen header={<Wordmark />} background="linear-gradient(180deg, #ECE8F7 0%, #F6F3EE 40%)">
-      <View style={{ gap: 4 }}>
-        <Text style={type.body}>{greeting()}</Text>
-        <Text style={styles.heading}>Your phone feels calm today.</Text>
-      </View>
-
-      <View style={styles.ringBlock}>
-        <Pressable
-          onLongPress={cycleDashboard}
-          accessibilityLabel={`Safety status: ${view.label}. ${view.sub}`}
-          style={styles.ringWrap}
-        >
-          <View style={styles.ringGlow} />
-          <Svg width={196} height={196} viewBox="0 0 210 210" style={styles.ringSvg}>
-            <Defs>
-              <LinearGradient id="ringG" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0" stopColor={colors.primary} />
-                <Stop offset="1" stopColor={colors.teal} />
-              </LinearGradient>
-            </Defs>
-            <Circle cx={105} cy={105} r={92} fill="none" stroke="rgba(75,63,160,0.10)" strokeWidth={13} />
-            <Circle
-              cx={105}
-              cy={105}
-              r={92}
-              fill="none"
-              stroke="url(#ringG)"
-              strokeWidth={13}
-              strokeLinecap="round"
-              strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={CIRCUMFERENCE * (1 - shown)}
-            />
-          </Svg>
-          <View style={styles.ringCore}>
-            <NazarEye size={30} />
-            <Text style={styles.ringLabel}>{view.label}</Text>
-          </View>
-        </Pressable>
-        <View style={[styles.ringPill, { backgroundColor: pill.bg }]}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: pill.dot }} />
-          <Text style={[styles.ringPillText, { color: pill.fg }]}>{view.sub}</Text>
-        </View>
+    <Screen header={<MainHeader />} gap={space.md}>
+      <View style={styles.intro}>
+        <Text style={styles.kicker}>{t('home.kicker')}</Text>
+        <Text style={styles.heading} accessibilityRole="header">
+          {t('home.heading')}
+        </Text>
+        <Text style={type.body}>{t('home.sub')}</Text>
       </View>
 
       <View style={styles.grid}>
-        {TILES[dashboard].map((t) => (
-          <Pressable
-            key={t.key}
-            onPress={() => router.navigate(TILE_HREF[t.key])}
-            accessibilityRole="button"
-            accessibilityLabel={`${t.name}: ${t.status}`}
-            style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]}
-          >
-            <View style={styles.tileTop}>
-              <IconChip icon={TILE_ICON[t.key]} />
-              <Dot t={t.t} size={10} halo />
-            </View>
-            <View style={{ gap: 2 }}>
-              <Text style={type.label}>{t.name}</Text>
-              <Text style={[type.body, { lineHeight: 19 }]}>{t.status}</Text>
-            </View>
-          </Pressable>
-        ))}
+        <ToolCard
+          icon={UserCircleIcon}
+          title={t('acctCard.title')}
+          desc={t('acctCard.desc')}
+          status={acctStatus}
+          onPress={() => router.navigate('/accounts')}
+          half={twoCol}
+        />
+        <ToolCard
+          icon={PulseIcon}
+          title={t('quietCard.title')}
+          desc={t('quietCard.desc')}
+          status={quietStatus}
+          onPress={() => router.navigate('/quiet-check')}
+          half={twoCol}
+        />
+        <ToolCard
+          icon={BluetoothIcon}
+          title={t('trackerCard.title')}
+          desc={t('trackerCard.desc')}
+          status={trkStatus}
+          onPress={() => router.navigate('/tracker')}
+        />
       </View>
 
-      <PrimaryButton
-        label={scanning ? 'Checking…' : 'Check my phone'}
-        icon={MagnifyingGlassIcon}
-        onPress={startScan}
-      />
+      <BaitWidget />
+
+      <Pressable
+        onPress={() => router.navigate('/vault')}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.opens', { title: t('vault.title') })}
+        style={({ pressed }) => [styles.evidence, pressed && { backgroundColor: colors.lavenderSoft }]}
+      >
+        <IconChip icon={LockSimpleIcon} />
+        <View style={{ flex: 1 }}>
+          <Text style={type.label}>{t('home.evidence')}</Text>
+          <Text style={type.body}>{ev ? tn('home.evidence', ev) : t('home.evidenceEmpty')}</Text>
+        </View>
+        <CaretRightIcon size={16} weight="bold" color={colors.muted} />
+      </Pressable>
     </Screen>
   );
 }
 
+function ToolCard({
+  icon,
+  title,
+  desc,
+  status,
+  onPress,
+  half,
+}: {
+  icon: Icon;
+  title: string;
+  desc: string;
+  status: [string, Tone];
+  onPress: () => void;
+  half?: boolean;
+}) {
+  const { t } = useT();
+  const [label, tn] = status;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${desc} ${label}`}
+      accessibilityHint={t('common.opens', { title })}
+      style={({ pressed }) => [styles.tool, half ? styles.half : styles.full, pressed && { backgroundColor: colors.lavenderSoft }]}
+    >
+      <View style={styles.toolTop}>
+        <IconChip icon={icon} size={38} radius={12} iconSize={20} />
+        <CaretRightIcon size={15} weight="bold" color={colors.muted} />
+      </View>
+      <View style={{ gap: 3, flex: 1 }}>
+        <Text style={type.label}>{title}</Text>
+        <Text style={[type.body, styles.desc]}>{desc}</Text>
+      </View>
+      <View style={styles.status}>
+        <Dot t={tn} size={7} />
+        <Text style={[type.pill, { color: tn === 'off' ? colors.muted : undefined, flex: 1 }]} numberOfLines={2}>
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+type BaitState = 'a' | 'b' | 'c' | 'd' | 'e';
+
+/** The signature Bait Test widget. Every value comes from stored baits and recorded events. */
+function BaitWidget() {
+  const { data, status } = useStore();
+  const { t, time, when, dur } = useT();
+  const s = baitSummary(data);
+  const nameOf = (id: string) => data.baits.find((b) => b.id === id)?.name ?? '';
+
+  const state: BaitState =
+    status !== 'ready' ? 'e' : s.active.length === 0 ? 'd' : s.today.length > 0 ? 'b' : s.latest ? 'a' : 'c';
+  const latestToday = s.today.reduce((m, e) => (e.at > m.at ? e : m), s.today[0]);
+
+  const badge =
+    state === 'e'
+      ? { label: t('baitW.unavailable'), bg: colors.offBg, fg: colors.muted }
+      : s.active.length
+        ? { label: t('baitW.active'), bg: colors.primary, fg: colors.onPrimary }
+        : { label: t('baitW.inactive'), bg: colors.offBg, fg: colors.muted };
+
+  const body =
+    state === 'b'
+      ? latestToday.durationMs
+        ? t('baitW.b.bodyDur', { time: time(latestToday.at), name: nameOf(latestToday.baitId), d: dur(latestToday.durationMs) })
+        : t('baitW.b.body', { time: time(latestToday.at), name: nameOf(latestToday.baitId) })
+      : t(`baitW.${state}.body` as TKey);
+
+  const unknown = state === 'e' ? '—' : null;
+
+  return (
+    <View style={[styles.bait, state === 'b' && styles.baitAlert]}>
+      <Pressable
+        onPress={() => router.navigate('/bait')}
+        accessibilityRole="button"
+        accessibilityLabel={`${t('baitW.label')}. ${badge.label}. ${t(`baitW.${state}.title` as TKey)}. ${body}`}
+        accessibilityHint={t('baitW.open')}
+        style={({ pressed }) => [styles.baitMain, pressed && { opacity: 0.85 }]}
+      >
+        <View style={styles.baitHead}>
+          <View style={styles.baitIcon}>
+            <FileLockIcon size={20} color={colors.onPrimary} />
+          </View>
+          <Text style={styles.baitLabel}>{t('baitW.label')}</Text>
+          <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+            <Text style={[type.pill, { color: badge.fg, fontSize: 13 }]}>{badge.label}</Text>
+          </View>
+          <CaretRightIcon size={16} weight="bold" color={colors.primaryDeep} style={{ marginLeft: 'auto' }} />
+        </View>
+
+        <View style={{ gap: 4 }}>
+          <Text style={[styles.baitTitle, state === 'b' && { color: colors.actFg }]}>{t(`baitW.${state}.title` as TKey)}</Text>
+          <Text style={type.bodyInk}>{body}</Text>
+        </View>
+
+        <View style={styles.baitStats}>
+          <Stat label={t('baitW.statActive')} value={unknown ?? String(s.active.length)} />
+          <Stat label={t('baitW.statToday')} value={unknown ?? String(s.today.length)} alert={s.today.length > 0} />
+          <Stat label={t('baitW.statLatest')} value={unknown ?? (s.latest ? when(s.latest.at) : t('common.none'))} wide />
+        </View>
+      </Pressable>
+
+      <Pressable
+        onPress={() => router.navigate({ pathname: '/bait-new' })}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.baitAction, pressed && { backgroundColor: 'rgba(75,63,160,0.10)' }]}
+      >
+        <Text style={styles.baitActionText}>{data.baits.length ? t('baitW.setAnother') : t('baitW.setFirst')}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function Stat({ label, value, alert, wide }: { label: string; value: string; alert?: boolean; wide?: boolean }) {
+  return (
+    <View style={[styles.stat, wide && { flex: 1.6 }]}>
+      <Text style={[styles.statValue, wide && { fontSize: 14 }, alert && { color: colors.actFg }]} numberOfLines={2}>
+        {value}
+      </Text>
+      <Text style={styles.statLabel} numberOfLines={2}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  heading: { fontFamily: fonts.medium, fontSize: 27, lineHeight: 31, letterSpacing: -0.54, color: colors.ink },
-  ringBlock: { alignItems: 'center', gap: 10 },
-  ringWrap: { width: 196, height: 196, alignItems: 'center', justifyContent: 'center' },
-  ringGlow: {
-    position: 'absolute',
-    width: 250,
-    height: 250,
-    left: -27,
-    top: -27,
-    borderRadius: 125,
-    backgroundImage: 'radial-gradient(circle, rgba(75,63,160,0.14) 0%, rgba(75,63,160,0) 68%)',
+  intro: { gap: 4, paddingTop: space.xs },
+  kicker: { fontFamily: fonts.medium, fontSize: 14, color: colors.primary },
+  heading: { fontFamily: fonts.medium, fontSize: 24, lineHeight: 30, letterSpacing: -0.4, color: colors.ink },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  tool: { ...card, padding: 14, gap: 10, minHeight: 186 },
+  half: { flexBasis: '46%', flexGrow: 1 },
+  full: { width: '100%', minHeight: 0 },
+  toolTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  desc: { fontSize: 14, lineHeight: 19 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  bait: {
+    borderRadius: radius.lg,
+    backgroundColor: colors.lavender,
+    borderWidth: 1,
+    borderColor: 'rgba(75,63,160,0.18)',
+    overflow: 'hidden',
   },
-  ringSvg: { position: 'absolute', top: 0, left: 0, transform: [{ rotate: '-90deg' }] },
-  ringCore: {
-    width: 142,
-    height: 142,
-    borderRadius: 71,
-    backgroundColor: colors.surface,
-    boxShadow: '0px 14px 30px -14px rgba(46,38,112,0.35)',
+  baitAlert: { borderColor: 'rgba(138,63,53,0.35)' },
+  baitMain: { padding: space.lg, gap: 14 },
+  baitHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  baitIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  baitLabel: { fontFamily: fonts.semibold, fontSize: 13, letterSpacing: 1, color: colors.primaryDeep },
+  badge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.pill },
+  baitTitle: { fontFamily: fonts.medium, fontSize: 19, lineHeight: 24, color: colors.ink },
+  baitStats: { flexDirection: 'row', gap: 8 },
+  stat: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.sm, paddingVertical: 10, paddingHorizontal: 10, gap: 2 },
+  statValue: { fontFamily: fonts.medium, fontSize: 18, color: colors.ink },
+  statLabel: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
+  baitAction: {
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(75,63,160,0.15)',
   },
-  ringLabel: { fontFamily: fonts.medium, fontSize: 22, letterSpacing: -0.33, color: colors.ink },
-  ringPill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999 },
-  ringPillText: { fontFamily: fonts.medium, fontSize: 15 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: {
-    ...card,
-    flexBasis: '47%',
-    flexGrow: 1,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    gap: 9,
-    boxShadow: '0px 1px 0px rgba(46,38,112,0.04), 0px 10px 24px -16px rgba(46,38,112,0.30)',
-  },
-  tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  baitActionText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.primary },
+  evidence: { ...card, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 12, paddingHorizontal: space.lg },
 });

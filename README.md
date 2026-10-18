@@ -18,19 +18,27 @@ To build an installable Android APK in the cloud, run `npx eas-cli@latest build 
 
 ## How it works
 
-| # | Screen | Route | What you can do |
-|---|--------|-------|-----------------|
-| 01 | The Disguise | `/` | A working stock-style calculator. Type **`1947 =`** to open Nazar. |
-| 02 | Safety Dashboard | `/home` | **Check my phone** runs a check. Tap a tile to open its detail screen. Long-press the ring to cycle the safe / review / alert states (for demos). |
-| 03 | What can they see? | `/exposure` | Exposures listed most important first. Movement and Location open the tracker screen. |
-| 04 | Tracker following you | `/tracker` | The tracker's path for the day. **Find it** steps the signal meter. |
-| 05 | Someone took the bait | `/bait` | The catch card opens the Vault. |
-| 06 | Evidence Vault | `/vault` | Filter chips filter the timeline. |
-| 07 | Safe Order Action Plan | `/plan` | Tap a step to tick it. Stages complete in order. |
+Nazar opens only from the calculator: type **`1947 =`**. A reload, a deep link or a cold start always lands on the calculator first.
+
+| Screen | Route | What it really does |
+|--------|-------|---------------------|
+| Calculator (disguise) | `/` | A working stock-style calculator. History and the ⋮ menu hold any active baits. |
+| Home | `/home` | Hub for the three tools and the Bait Test widget. Every status comes from what has actually been recorded. There are no scores. |
+| Accounts & Sessions | `/accounts`, `/account-check`, `/account-item` | 10 guided checks (Google, WhatsApp, Apple, Instagram/Facebook, Telegram, location sharing, recovery info, family groups). Nazar has no account access and never asks for passwords. You record what you saw. |
+| Quiet Check | `/quiet-check` | Guided microphone, camera and location review. Android opens the system privacy and location settings. Your observations are kept as a timeline. Other apps' permissions are shown as "Unknown", because the OS doesn't expose them. |
+| Tracker Check | `/tracker`, `/tracker-detail` | A guided workflow around the phone's own unknown-tracker scan, with results recorded by you and the history kept. Nazar does not scan Bluetooth itself in this version. |
+| Bait Test | `/bait`, `/bait-new`, `/bait-detail` | Decoys hidden in the calculator's history or ⋮ menu. Opening one inside the app records the real time and how long it stayed open. It can't identify who opened it or detect remote access. |
+| Exposure | `/exposure` | What someone might see, derived only from completed checks. Unchecked areas say "Not checked yet". |
+| Vault | `/vault` | Only items you chose to save. You can filter them, remove them, or share a dated text summary. |
+| Plan | `/plan` | Safe-order steps, each with a Safe / May notice pill. Ticks are saved. |
+
+All data is stored on the device with AsyncStorage (the browser's localStorage on web). Android backups are off (`allowBackup: false`). There is no server.
+
+**Languages:** English and हिन्दी. Switch from the header on Home, Exposure, Vault and Plan. The choice is saved. Strings live in `src/i18n/en.ts` and `src/i18n/hi.ts`; TypeScript fails the build if a Hindi string is missing. The calculator disguise intentionally stays in English, like a stock calculator.
 
 Safety behaviours on every unlocked screen:
 
-- **Quick exit** (top right) jumps straight back to the calculator.
+- **Exit** (top right) jumps straight back to the calculator, which locks Nazar again.
 - If the app is sent to the background, it returns to the calculator.
 - **181 Women Helpline** and **112 Emergency** open the phone's dialer.
 - No user name, no notification bell, and no notifications.
@@ -41,16 +49,21 @@ Safety behaviours on every unlocked screen:
 ```
 src/
   app/
-    _layout.tsx         root stack, fonts, state provider
-    index.tsx           01 calculator (the disguise)
-    (nazar)/
-      _layout.tsx       tabs + custom tab bar, background → calculator
-      home.tsx          02   exposure.tsx 03   tracker.tsx 04
-      bait.tsx          05   vault.tsx    06   plan.tsx    07
-  components/           Screen shell, app bar, pills, buttons, tab bar, logo
-  calc.ts               expression evaluator (Hermes has no eval)
-  state.tsx             dashboard state + plan progress
-  theme.ts              colour, type and shadow tokens from the design
+    _layout.tsx           root stack, fonts, store
+    index.tsx             calculator disguise (+ bait decoys)
+    (nazar)/              tabs: home, exposure, vault, plan + detail pages
+  components/             Screen shell, headers, language toggle, cards, buttons, DeviceFrame
+  content/                account-check catalogue, bait icons
+  i18n/                   en.ts, hi.ts, useT() with date/time formatting
+  store.tsx               persisted state (baits, events, checks, evidence, language)
+  derive.ts               summaries shared by Home, Exposure and the tool pages
+  session.ts              in-memory unlock flag
+  systemSettings.ts       Android system-settings shortcuts
+  theme.ts                colour, type, spacing and radius tokens
 ```
 
-All data on these screens is sample data for the pitch. Scanning, bait capture and evidence export are not wired to real device APIs yet.
+## Known limits
+
+- No Bluetooth scanning. Real BLE scanning needs a native module (for example `react-native-ble-plx`) and a development build. It won't run in Expo Go or on the web.
+- A bait only sees what happens inside this calculator on this phone.
+- Quiet Check and Accounts are guided reviews. Their results are what the user recorded, not verified findings.

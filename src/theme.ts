@@ -8,6 +8,7 @@ export const colors = {
   ink: '#1F1C2E',
   muted: '#5A5650',
   hairline: 'rgba(31,28,46,0.06)',
+  border: 'rgba(46,38,112,0.12)',
 
   primary: '#4B3FA0',
   primaryHover: '#3D3290',
@@ -80,6 +81,9 @@ export const shadow = {
   button: '0px 14px 28px -12px rgba(75,63,160,0.6)',
 };
 
-export const gradients = {
-  primaryButton: 'linear-gradient(135deg, #5547B3 0%, #4B3FA0 50%, #3D3290 100%)',
-};
+/** Spacing scale (dp). */
+export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 };
+/** Corner radii: chips, controls, cards. */
+export const radius = { sm: 12, md: 16, lg: 20, pill: 999 };
+/** Minimum tap target. */
+export const TAP = 44;

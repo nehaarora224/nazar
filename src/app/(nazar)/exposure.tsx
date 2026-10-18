@@ -1,100 +1,73 @@
 import { Href, router } from 'expo-router';
-import { CaretRightIcon, ChatCircleIcon, CheckIcon, FootprintsIcon, Icon, ImageIcon, MapPinIcon } from 'phosphor-react-native';
+import { CaretRightIcon, ChatCircleIcon, FootprintsIcon, Icon, ImageIcon, MapPinIcon } from 'phosphor-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { BackButton, card, IconChip } from '../../components/ui';
-import { colors, tone, Tone, type } from '../../theme';
+import { card, IconChip, MainHeader, Pill } from '../../components/ui';
+import { exposure, ExposureKey } from '../../derive';
+import { TKey, useT } from '../../i18n';
+import { useStore } from '../../store';
+import { colors, space, tone, type } from '../../theme';
 
-type Exposure = { name: string; line: string; t: Tone; icon: Icon; href?: Href };
+const ICON: Record<ExposureKey, Icon> = { movement: FootprintsIcon, location: MapPinIcon, messages: ChatCircleIcon, photos: ImageIcon };
+const HREF: Record<ExposureKey, Href> = { movement: '/tracker', location: '/quiet-check', messages: '/accounts', photos: '/accounts' };
 
-/** Ordered by what matters most. */
-const ITEMS: Exposure[] = [
-  { name: 'Movement', line: 'Where you go may be followed', t: 'act', icon: FootprintsIcon, href: '/tracker' },
-  { name: 'Location', line: 'Your location may be visible to 1 person', t: 'look', icon: MapPinIcon, href: '/tracker' },
-  { name: 'Messages', line: 'Your messages look private', t: 'safe', icon: ChatCircleIcon },
-  { name: 'Photos', line: 'Your photos stay on this phone', t: 'safe', icon: ImageIcon },
-];
-
-/** Screen 03 — What can they see? */
+/** What can they see? Derived only from checks she has done; unchecked areas say so. */
 export default function ExposureScreen() {
+  const { data } = useStore();
+  const { t } = useT();
+  const items = exposure(data);
+
   return (
-    <Screen
-      gap={18}
-      padTop={8}
-      header={
-        <>
-          <BackButton />
-          <Text style={[type.label, { fontSize: 15, color: colors.muted }]}>Exposure</Text>
-        </>
-      }
-    >
-      <View style={{ gap: 8 }}>
-        <Text style={type.display}>What can they see?</Text>
-        <Text style={type.body}>
-          Here is what someone else might be able to see on this phone — and what is still only yours.
+    <Screen header={<MainHeader />} gap={14}>
+      <View style={{ gap: 6 }}>
+        <Text style={type.display} accessibilityRole="header">
+          {t('exp.heading')}
         </Text>
+        <Text style={type.body}>{t('exp.sub')}</Text>
       </View>
 
       <View style={styles.strip}>
-        {ITEMS.map(({ name, t, icon: I }) => (
-          <View key={name} style={[styles.chip, { backgroundColor: tone[t].bg }]}>
-            <I size={19} weight="fill" color={tone[t].dot} />
-            <Text style={[type.pill, { color: tone[t].fg }]}>{name}</Text>
-          </View>
-        ))}
+        {items.map(({ key, t: tn }) => {
+          const I = ICON[key];
+          return (
+            <View key={key} style={[styles.chip, { backgroundColor: tone[tn].bg }]}>
+              <I size={19} weight="fill" color={tone[tn].dot} />
+              <Text style={[type.pill, { color: tone[tn].fg, textAlign: 'center' }]} numberOfLines={2}>
+                {t(`exp.${key}` as TKey)}
+              </Text>
+            </View>
+          );
+        })}
       </View>
 
-      <View style={{ gap: 10 }}>
-        <Text style={type.overline}>Most important first</Text>
-        {ITEMS.map((item) => (
-          <ExposureRow key={item.name} {...item} />
-        ))}
-      </View>
+      <Text style={type.overline}>{t('exp.order')}</Text>
+      {items.map(({ key, t: tn, state }) => {
+        const line = t(`exp.${key}.${state}` as TKey);
+        return (
+          <Pressable
+            key={key}
+            onPress={() => router.navigate(HREF[key])}
+            accessibilityRole="button"
+            accessibilityLabel={`${t(`exp.${key}` as TKey)}. ${line}`}
+            style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.lavenderSoft }]}
+          >
+            <IconChip icon={ICON[key]} size={44} radius={14} iconSize={21} bg={tone[tn].bg} fg={tone[tn].fg} />
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={type.label}>{t(`exp.${key}` as TKey)}</Text>
+              <Text style={type.body}>{line}</Text>
+              {tn !== 'off' && tn !== 'safe' && <Pill t={tn} label={t('acct.status.review')} style={{ alignSelf: 'flex-start' }} />}
+            </View>
+            <CaretRightIcon size={16} weight="bold" color={colors.muted} />
+          </Pressable>
+        );
+      })}
     </Screen>
-  );
-}
-
-function ExposureRow({ name, line, t, icon, href }: Exposure) {
-  const risky = t !== 'safe';
-  const c = tone[t];
-  return (
-    <Pressable
-      disabled={!href}
-      onPress={() => href && router.navigate(href)}
-      accessibilityRole={href ? 'button' : undefined}
-      accessibilityLabel={`${name}. ${line}`}
-      style={({ pressed }) => [
-        styles.row,
-        risky
-          ? { backgroundImage: `linear-gradient(100deg, ${c.bg} 0%, ${colors.surface} 75%)`, boxShadow: `0px 10px 22px -18px ${c.fg}` }
-          : { boxShadow: 'none' },
-        pressed && { opacity: 0.85 },
-      ]}
-    >
-      <IconChip
-        icon={icon}
-        size={44}
-        radius={14}
-        iconSize={21}
-        bg={risky ? c.dot : colors.safeBg}
-        fg={risky ? colors.surface : colors.safeIcon}
-      />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={type.label}>{name}</Text>
-        <Text style={type.body}>{line}</Text>
-      </View>
-      {risky ? (
-        <CaretRightIcon size={16} weight="bold" color={c.fg} />
-      ) : (
-        <CheckIcon size={16} weight="bold" color={colors.safeIcon} />
-      )}
-    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   strip: { flexDirection: 'row', gap: 6 },
-  chip: { flex: 1, alignItems: 'center', gap: 5, paddingTop: 10, paddingBottom: 9, borderRadius: 14 },
-  row: { ...card, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 15, paddingHorizontal: 16 },
+  chip: { flex: 1, alignItems: 'center', gap: 5, paddingTop: 10, paddingBottom: 9, paddingHorizontal: 2, borderRadius: 14 },
+  row: { ...card, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: space.lg },
 });

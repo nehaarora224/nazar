@@ -12,59 +12,53 @@ import {
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { IconChip, NoticePill } from '../../components/ui';
-import { useNazar } from '../../state';
+import { MainHeader, NoticePill } from '../../components/ui';
+import { TKey, useT } from '../../i18n';
+import { useStore } from '../../store';
 import { colors, fonts, type } from '../../theme';
 
-type Stage = { title: string; waitingLabel: string; icon: Icon; actions: { text: string; mayNotice?: boolean }[] };
+type Stage = { title: TKey; waitingLabel: TKey; icon: Icon; actions: { text: TKey; mayNotice?: boolean }[] };
 
 /** Safe order: preserve evidence, then reach people, then lock things down. */
 const STAGES: Stage[] = [
+  { title: 'plan.preserve', waitingLabel: 'plan.soon', icon: ArchiveIcon, actions: [{ text: 'plan.a00' }, { text: 'plan.a01' }] },
+  { title: 'plan.support', waitingLabel: 'plan.soon', icon: HandHeartIcon, actions: [{ text: 'plan.a10' }, { text: 'plan.a11' }] },
   {
-    title: 'Preserve',
-    waitingLabel: 'Soon',
-    icon: ArchiveIcon,
-    actions: [{ text: 'Save screenshots to your Vault' }, { text: 'Export the evidence report' }],
-  },
-  {
-    title: 'Get support',
-    waitingLabel: 'Soon',
-    icon: HandHeartIcon,
-    actions: [{ text: 'Tell one trusted person' }, { text: 'Talk to a counsellor at 181' }],
-  },
-  {
-    title: 'Secure',
-    waitingLabel: 'When ready',
+    title: 'plan.secure',
+    waitingLabel: 'plan.whenReady',
     icon: LockSimpleIcon,
     actions: [
-      { text: 'Change your Google password', mayNotice: true },
-      { text: 'Remove the unknown device', mayNotice: true },
+      { text: 'plan.a20', mayNotice: true },
+      { text: 'plan.a21', mayNotice: true },
     ],
   },
 ];
 
 /** Screen 07 — Safe Order Action Plan. */
 export default function Plan() {
-  const { planDone, togglePlanStep } = useNazar();
+  const {
+    data: { planDone },
+    togglePlanStep,
+  } = useStore();
+  const { t } = useT();
   const stageDone = (si: number) => STAGES[si].actions.every((_, ai) => planDone[`${si}-${ai}`]);
 
   return (
-    <Screen
-      gap={14}
-      header={
-        <>
-          <IconChip icon={PathIcon} size={40} radius={14} iconSize={20} bg={colors.lavender} />
-          <Text style={[type.label, { fontSize: 15, color: colors.muted }]}>Your safe plan</Text>
-        </>
-      }
-    >
-      <Text style={type.display}>One gentle step at a time.</Text>
+    <Screen gap={14} header={<MainHeader />}>
+      <View style={{ gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PathIcon size={16} color={colors.primary} />
+          <Text style={[type.label, { fontSize: 14, color: colors.primary }]}>{t('plan.label')}</Text>
+        </View>
+        <Text style={type.display} accessibilityRole="header">
+          {t('plan.heading')}
+        </Text>
+      </View>
 
       <View style={styles.banner}>
         <HeartIcon size={20} weight="fill" color={colors.tealDeep} />
         <Text style={styles.bannerText}>
-          <Text style={{ fontFamily: fonts.semibold }}>You're not alone.</Text> Thousands of women have taken these same
-          steps.
+          <Text style={{ fontFamily: fonts.semibold }}>{t('plan.bannerBold')}</Text> {t('plan.bannerRest')}
         </Text>
       </View>
 
@@ -97,7 +91,7 @@ export default function Plan() {
 
               <View style={styles.stageBody}>
                 <View style={styles.stageHead}>
-                  <Text style={type.title}>{st.title}</Text>
+                  <Text style={type.title}>{t(st.title)}</Text>
                   <View
                     style={[
                       styles.meta,
@@ -105,7 +99,7 @@ export default function Plan() {
                     ]}
                   >
                     <Text style={[type.pill, { color: done ? colors.safeFg : current ? colors.primaryDeep : colors.muted }]}>
-                      {done ? 'Done' : current ? 'Next' : st.waitingLabel}
+                      {done ? t('plan.done') : current ? t('plan.next') : t(st.waitingLabel)}
                     </Text>
                   </View>
                 </View>
@@ -119,7 +113,7 @@ export default function Plan() {
                       onPress={() => togglePlanStep(key)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: ticked }}
-                      accessibilityLabel={`${a.text}. ${a.mayNotice ? 'May notice' : 'Safe'}`}
+                      accessibilityLabel={`${t(a.text)}. ${a.mayNotice ? t('pill.mayNotice') : t('pill.safe')}`}
                       style={({ pressed }) => [styles.action, pressed && { opacity: 0.85 }]}
                     >
                       {ticked ? (
@@ -127,7 +121,7 @@ export default function Plan() {
                       ) : (
                         <CircleIcon size={20} color={colors.checkOff} />
                       )}
-                      <Text style={[type.bodyInk, { flex: 1 }]}>{a.text}</Text>
+                      <Text style={[type.bodyInk, { flex: 1 }]}>{t(a.text)}</Text>
                       <NoticePill mayNotice={a.mayNotice} />
                     </Pressable>
                   );

@@ -1,38 +1,32 @@
 import { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors } from '../theme';
-import { AppBar } from './ui';
+import { useT } from '../i18n';
+import { useStore } from '../store';
+import { colors, space } from '../theme';
+import { ErrorBanner } from './ui';
 
 /**
- * Shell for every unlocked screen: cream (optionally tinted) ground, the app bar with
- * Quick exit, and a scrolling body. The helpline row and tab bar come from the tab layout.
+ * Shell for every unlocked screen: cream ground, a header (MainHeader or SubHeader) and a
+ * scrolling body. The helpline row and tab bar come from the tab layout, below the scroll area,
+ * so content never hides behind them.
  */
-export function Screen({
-  header,
-  children,
-  background,
-  gap = 12,
-  padTop = 6,
-}: {
-  header: ReactNode;
-  children: ReactNode;
-  /** A CSS gradient for the top of the screen, e.g. the lavender wash on Home. */
-  background?: string;
-  gap?: number;
-  padTop?: number;
-}) {
-  const bg: ViewStyle = background ? { backgroundImage: background } : {};
+export function Screen({ header, children, gap = space.md }: { header: ReactNode; children: ReactNode; gap?: number }) {
+  const { status, saveFailed } = useStore();
+  const { t } = useT();
   return (
-    <View style={[styles.root, bg]}>
+    <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.flex}>
-        <AppBar>{header}</AppBar>
+        {header}
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.body, { gap, paddingTop: padTop }]}
+          contentContainerStyle={[styles.body, { gap }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
+          {status === 'error' && <ErrorBanner text={t('common.loadError')} />}
+          {saveFailed && <ErrorBanner text={t('common.saveError')} />}
           {children}
         </ScrollView>
       </SafeAreaView>
@@ -43,5 +37,5 @@ export function Screen({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream },
   flex: { flex: 1 },
-  body: { paddingHorizontal: 18, paddingBottom: 14 },
+  body: { paddingHorizontal: 18, paddingTop: space.xs, paddingBottom: space.xl },
 });

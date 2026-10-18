@@ -8,14 +8,14 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { DeviceFrame } from '../components/DeviceFrame';
-import { NazarProvider } from '../state';
+import { StoreProvider } from '../store';
 
 export default function RootLayout() {
   const [loaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold });
 
   return (
     <SafeAreaProvider>
-      <NazarProvider>
+      <StoreProvider>
         <StatusBar style="dark" />
         <DeviceFrame>
           {loaded ? (
@@ -29,7 +29,7 @@ export default function RootLayout() {
             <View style={{ flex: 1, backgroundColor: '#F7F7F7' }} />
           )}
         </DeviceFrame>
-      </NazarProvider>
+      </StoreProvider>
     </SafeAreaProvider>
   );
 }

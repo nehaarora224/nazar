@@ -2,17 +2,24 @@ import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { BackspaceIcon, CaretDownIcon, ClockCounterClockwiseIcon, DotsThreeVerticalIcon } from 'phosphor-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { evaluate, formatResult } from '../calc';
+import { CalcEntry, DecoyView, HistoryPanel, OverflowMenu } from '../components/CalculatorExtras';
 import { useScreenSize } from '../components/DeviceFrame';
 import { NazarMark } from '../components/Logo';
+import { useT } from '../i18n';
+import { session } from '../session';
+import { Bait, useStore } from '../store';
 import { colors, fonts } from '../theme';
 
 /** Her private code. Typing it and pressing = opens Nazar. */
 const SECRET = '1947';
 const START = { expr: '720 + 173', display: '893' };
+const START_HISTORY: CalcEntry[] = [{ expr: START.expr, result: START.display }];
+
+type Panel = { kind: 'none' } | { kind: 'history' } | { kind: 'menu' } | { kind: 'decoy'; bait: Bait; eventId: string; openedAt: number };
 
 const KEYS = ['AC', '( )', '%', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '0', '.', '⌫', '='];
 const KEY_ROWS = [0, 4, 8, 12, 16].map((i) => KEYS.slice(i, i + 4));
@@ -27,7 +34,12 @@ export default function Calculator() {
   const [expr, setExpr] = useState(START.expr);
   const [display, setDisplay] = useState(START.display);
   const [unlocking, setUnlocking] = useState(false);
+  const [history, setHistory] = useState<CalcEntry[]>(START_HISTORY);
+  const [panel, setPanel] = useState<Panel>({ kind: 'none' });
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { data, recordBaitOpen, finishBaitOpen } = useStore();
+  const { t } = useT();
+  const activeBaits = (type: Bait['type']) => data.baits.filter((b) => b.active && b.type === type);
   const { width, height } = useScreenSize();
   // On shorter screens, shrink the five key rows so the display keeps its room (~370 for everything else).
   const key = Math.min(80, Math.floor((width - 32 - 36) / 4), Math.floor((height - 370) / 5));
@@ -38,9 +50,36 @@ export default function Calculator() {
       setExpr(START.expr);
       setDisplay(START.display);
       setUnlocking(false);
+      setHistory(START_HISTORY);
+      setPanel({ kind: 'none' });
+      // Back on the calculator means locked again; the code is needed to return.
+      session.lock();
     }, []),
   );
   useEffect(() => () => clearTimeout(timer.current), []);
+
+  /** A decoy was really opened: record it now, and its duration when it closes. */
+  const openDecoy = (bait: Bait) => setPanel({ kind: 'decoy', bait, eventId: recordBaitOpen(bait.id), openedAt: Date.now() });
+  const closePanel = useCallback(() => {
+    setPanel((p) => {
+      if (p.kind === 'decoy') finishBaitOpen(p.eventId, Date.now() - p.openedAt);
+      return { kind: 'none' };
+    });
+  }, [finishBaitOpen]);
+
+  // Close (and time) an open decoy if the app is backgrounded; Android back closes panels.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => st !== 'active' && closePanel());
+    return () => sub.remove();
+  }, [closePanel]);
+  useEffect(() => {
+    if (panel.kind === 'none') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      closePanel();
+      return true;
+    });
+    return () => sub.remove();
+  }, [panel.kind, closePanel]);
 
   function press(k: string) {
     const fresh = expr.endsWith('=') || expr === START.expr;
@@ -58,13 +97,16 @@ export default function Calculator() {
     if (k === '=') {
       if (expr.replace(/\s/g, '') === SECRET) {
         setUnlocking(true);
+        session.unlock();
         clearTimeout(timer.current);
         timer.current = setTimeout(() => router.push('/home'), 900);
         return;
       }
       const v = evaluate(expr);
+      const result = v == null ? 'Error' : formatResult(v);
       setExpr(expr + ' =');
-      setDisplay(v == null ? 'Error' : formatResult(v));
+      setDisplay(result);
+      if (v != null && !fresh) setHistory((h) => [...h.slice(-49), { expr, result }]);
       return;
     }
     let next = fresh ? (/[0-9.]/.test(k) || k === '( )' ? '' : display === 'Error' ? '' : display) : expr;
@@ -84,8 +126,12 @@ export default function Calculator() {
       <StatusBar style="dark" />
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         <View style={styles.topIcons}>
-          <ClockCounterClockwiseIcon size={22} color="#5F6368" />
-          <DotsThreeVerticalIcon size={22} color="#5F6368" weight="bold" />
+          <Pressable onPress={() => setPanel({ kind: 'history' })} accessibilityRole="button" accessibilityLabel="History" style={styles.topBtn}>
+            <ClockCounterClockwiseIcon size={22} color="#5F6368" />
+          </Pressable>
+          <Pressable onPress={() => setPanel({ kind: 'menu' })} accessibilityRole="button" accessibilityLabel="More options" style={styles.topBtn}>
+            <DotsThreeVerticalIcon size={22} color="#5F6368" weight="bold" />
+          </Pressable>
         </View>
         <View style={styles.displayArea}>
           <Text style={styles.expr} numberOfLines={1}>
@@ -145,12 +191,35 @@ export default function Calculator() {
         </View>
       </SafeAreaView>
 
+      {panel.kind === 'history' && (
+        <SafeAreaView edges={['top']} style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          <Pressable style={StyleSheet.absoluteFill} onPress={closePanel} accessibilityLabel="Close history" />
+          <HistoryPanel
+            entries={history}
+            decoys={activeBaits('history')}
+            onPick={(e) => {
+              setExpr(e.expr);
+              setDisplay(e.expr);
+              closePanel();
+            }}
+            onOpenDecoy={openDecoy}
+            onClose={closePanel}
+          />
+        </SafeAreaView>
+      )}
+      {panel.kind === 'menu' && (
+        <SafeAreaView edges={['top']} style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          <OverflowMenu decoys={activeBaits('menu')} onHistory={() => setPanel({ kind: 'history' })} onOpenDecoy={openDecoy} onClose={closePanel} />
+        </SafeAreaView>
+      )}
+      {panel.kind === 'decoy' && <DecoyView bait={panel.bait} onClose={closePanel} />}
+
       {unlocking && (
         <View style={styles.unlock}>
           <StatusBar style="light" />
           <NazarMark size={72} variant="ghost" />
-          <Text style={styles.unlockTitle}>You're safe here</Text>
-          <Text style={styles.unlockSub}>Opening Nazar…</Text>
+          <Text style={styles.unlockTitle}>{t('unlock.title')}</Text>
+          <Text style={styles.unlockSub}>{t('unlock.sub')}</Text>
         </View>
       )}
     </View>
@@ -160,7 +229,8 @@ export default function Calculator() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F7F7F7' },
   flex: { flex: 1 },
-  topIcons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 22, paddingTop: 12, paddingHorizontal: 22 },
+  topIcons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 0, paddingTop: 2, paddingHorizontal: 10 },
+  topBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   displayArea: { flex: 1, justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 28, paddingBottom: 18, gap: 10 },
   expr: { fontSize: 24, color: '#5F6368', minHeight: 30 },
   display: { fontSize: 84, lineHeight: 92, fontWeight: '300', letterSpacing: -0.84, color: '#202124' },
