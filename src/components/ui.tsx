@@ -14,7 +14,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { Animated, Linking, Pressable, StyleProp, StyleSheet, Text, TextInput, View, ViewStyle } from 'react-native';
 
 import { useT } from '../i18n';
-import { Lang, useStore } from '../store';
+import { Lang } from '../store';
 import { colors, fonts, radius, shadow, space, TAP, tone, Tone, type } from '../theme';
 import { useScreenSize } from './DeviceFrame';
 import { Wordmark } from './Logo';
@@ -221,30 +221,13 @@ export function NoticePill({ mayNotice }: { mayNotice?: boolean }) {
   return mayNotice ? <Pill t="act" label={t('pill.mayNotice')} /> : <Pill t="safe" label={t('pill.safe')} />;
 }
 
-/** Marks illustrative data. Shown on every sample item. */
+// Sample/demo data was removed, so these render nothing. Kept as no-ops so existing call sites
+// and `sample` props stay valid without touching every screen.
 export function SampleBadge() {
-  const { t } = useT();
-  return (
-    <View style={styles.sample} accessibilityLabel={t('sample.badgeA11y')}>
-      <Text style={styles.sampleText}>{t('sample.badge')}</Text>
-    </View>
-  );
+  return null;
 }
-
-/** Page-level note that sample data is included, with a switch to hide or show it. */
 export function SampleBanner() {
-  const { data, setShowSample } = useStore();
-  const { t } = useT();
-  return (
-    <View style={styles.sampleBanner}>
-      <Text style={[type.pill, { flex: 1, color: colors.neutralFg, fontFamily: fonts.medium }]}>
-        {data.showSample ? t('sample.on') : t('sample.off')}
-      </Text>
-      <Pressable onPress={() => setShowSample(!data.showSample)} accessibilityRole="button" hitSlop={8} style={styles.sampleBtn}>
-        <Text style={[type.pill, { color: colors.primary }]}>{data.showSample ? t('sample.hide') : t('sample.show')}</Text>
-      </Pressable>
-    </View>
-  );
+  return null;
 }
 
 export function PrimaryButton({

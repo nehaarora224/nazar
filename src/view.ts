@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { ACCOUNT_CHECKS, checkKey } from './content/accountChecks';
 import { ALL_AUDIT_ITEMS, AUDIT_MODULES } from './content/audit';
 import type { TKey } from './i18n/en';
-import { buildSample, SampleData, Sampled } from './sample';
+import { SampleData, Sampled } from './sample';
 import {
   AuditFinding,
   AuditItemState,
@@ -140,8 +140,8 @@ export type View = ReturnType<typeof buildView>;
 
 export function useView() {
   const { data } = useStore();
-  const sample = useMemo(() => (data.showSample ? buildSample() : null), [data.showSample]);
-  return useMemo(() => buildView(data, sample), [data, sample]);
+  // Sample/demo data has been removed: the app only ever shows the person's own real records.
+  return useMemo(() => buildView(data, null), [data]);
 }
 
 /* ---------- Summaries ---------- */
