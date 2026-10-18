@@ -160,8 +160,6 @@ export default function BaitDetail() {
         {events.length === 0 && <Text style={[type.body, { paddingHorizontal: 16, paddingBottom: 14 }]}>{isEmail ? t('bd.noLinkYet') : t('bd.eventsEmpty')}</Text>}
       </ListCard>
 
-      <InfoBox title={t('bait.limits.title')} body={t('bait.limits.body')} />
-
       {!bait.sample && (
         <>
           <SecondaryButton icon={bait.active ? PauseIcon : PlayIcon} label={bait.active ? t('bd.pause') : t('bd.resume')} onPress={() => setBaitActive(bait.id, !bait.active)} />
