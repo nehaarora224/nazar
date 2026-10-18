@@ -39,6 +39,7 @@ export default function NazarLayout() {
       <Tabs.Screen name="audit-report" />
       <Tabs.Screen name="tracker" />
       <Tabs.Screen name="tracker-detail" />
+      <Tabs.Screen name="ble-scan" />
       <Tabs.Screen name="bait" />
       <Tabs.Screen name="bait-new" />
       <Tabs.Screen name="bait-detail" />

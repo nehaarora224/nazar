@@ -74,11 +74,13 @@ export class ScanController {
   error?: ScanError;
   readonly devices = new Map<string, BleDevice>();
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private adapter: BleAdapter;
+  private opts: { durationMs: number; onChange: () => void; now?: () => number };
 
-  constructor(
-    private adapter: BleAdapter,
-    private opts: { durationMs: number; onChange: () => void; now?: () => number },
-  ) {}
+  constructor(adapter: BleAdapter, opts: { durationMs: number; onChange: () => void; now?: () => number }) {
+    this.adapter = adapter;
+    this.opts = opts;
+  }
 
   private now() {
     return (this.opts.now ?? Date.now)();

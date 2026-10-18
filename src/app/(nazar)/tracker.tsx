@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { BluetoothIcon, GearSixIcon, HourglassMediumIcon } from 'phosphor-react-native';
+import { BluetoothIcon, GearSixIcon, HourglassMediumIcon, MagnifyingGlassIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -67,8 +67,8 @@ export default function Tracker() {
             <Row label={t('trk.scanner')} value={t(`trk.scanner.${os}` as TKey)} />
           </View>
           <InfoBox title={t('trk.supported')} body={t('trk.supportedBody')} />
-          <InfoBox kind="warn" title={t('trk.limits')} body={t('trk.limitsBody')} />
           <PrimaryButton icon={BluetoothIcon} label={t('trk.start')} onPress={() => setPhase('checking')} />
+          <SecondaryButton icon={MagnifyingGlassIcon} label={t('trk.bleLink')} onPress={() => router.navigate('/ble-scan')} />
         </>
       ) : (
         <>

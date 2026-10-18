@@ -24,6 +24,7 @@ const PARENT_TAB: Record<string, string> = {
   'audit-report': 'home',
   tracker: 'home',
   'tracker-detail': 'home',
+  'ble-scan': 'home',
   bait: 'home',
   'bait-new': 'home',
   'bait-detail': 'home',
