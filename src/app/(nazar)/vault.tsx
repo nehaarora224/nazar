@@ -3,9 +3,9 @@ import { ArrowsDownUpIcon, CloudSlashIcon, DeviceMobileIcon, DownloadSimpleIcon,
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useOverlay } from '../../components/Overlay';
+import { SheetHead, useOverlay } from '../../components/Overlay';
 import { Screen } from '../../components/Screen';
-import { Chips, Empty, ListCard, ListRow, MainHeader, PageTitle, PrimaryButton, Stats, Tabs } from '../../components/ui';
+import { Chips, Empty, ListCard, ListRow, MainHeader, PageTitle, PrimaryButton, Stats, Tabs, TonalButton } from '../../components/ui';
 import { evidenceDetail, evidenceTitle, KIND_ICON, SOURCE_KEY } from '../../content/evidence';
 import { buildTimelineText, downloadTimeline, timelineFilename } from '../../exportVault';
 import { useT } from '../../i18n';
@@ -30,7 +30,7 @@ const catOf = (e: Evidence): Cat => {
 export default function Vault() {
   const v = useView();
   const { t, when, dur } = useT();
-  const { toast } = useOverlay();
+  const { toast, openSheet, closeSheet } = useOverlay();
   const [tab, setTab] = useState<View2>('saved');
   const [cat, setCat] = useState<Cat>('all');
   const [newest, setNewest] = useState(true);
@@ -43,14 +43,26 @@ export default function Vault() {
   // The downloadable evidence file contains only records the person actually saved — never the
   // seed/example entries — so an exported summary can't present example data as genuine evidence.
   const realEvidence = v.evidence.filter((e) => !e.sample);
-  const download = async () => {
+  const runDownload = async () => {
+    closeSheet();
+    const text = buildTimelineText(realEvidence, t, when, dur);
+    const res = await downloadTimeline(timelineFilename(), text);
+    toast(res === 'failed' ? t('vault.dl.failed') : res === 'downloaded' ? t('vault.dl.ok') : t('vault.dl.saved'));
+  };
+
+  // Warn before exporting: the file leaves the encrypted vault as plain text.
+  const download = () => {
     if (realEvidence.length === 0) {
       toast(t('vault.dl.none'));
       return;
     }
-    const text = buildTimelineText(realEvidence, t, when, dur);
-    const res = await downloadTimeline(timelineFilename(), text);
-    toast(res === 'failed' ? t('vault.dl.failed') : res === 'downloaded' ? t('vault.dl.ok') : t('vault.dl.saved'));
+    openSheet(
+      <>
+        <SheetHead title={t('vault.dl.warnTitle')} body={t('vault.dl.warnBody')} />
+        <PrimaryButton label={t('vault.dl.warnConfirm')} onPress={runDownload} />
+        <TonalButton label={t('common.cancel')} onPress={closeSheet} />
+      </>,
+    );
   };
 
   return (

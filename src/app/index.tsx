@@ -9,13 +9,20 @@ import { evaluate, formatResult } from '../calc';
 import { CalcEntry, DecoyView, HistoryPanel, OverflowMenu } from '../components/CalculatorExtras';
 import { useScreenSize } from '../components/DeviceFrame';
 import { NazarMark } from '../components/Logo';
+import { PinSetup } from '../components/PinSetup';
 import { useT } from '../i18n';
 import { session } from '../session';
 import { Bait, useStore } from '../store';
 import { colors, fonts } from '../theme';
 
-/** Her private code. Typing it and pressing = opens Nazar. */
-const SECRET = '1947';
+/**
+ * The open code: a fixed, non-secret gesture that reveals Nazar's PIN setup on first run. It is NOT
+ * the security boundary — the saved data is encrypted under the user's own PIN (see store.tsx and
+ * crypto/vaultCrypto.ts). Once a PIN exists, unlocking is done by typing THAT PIN and pressing =;
+ * a wrong PIN (or this code) just behaves like any other calculation, keeping the disguise intact.
+ */
+const OPEN_CODE = '1947';
+const PIN_RE = /^\d{4,12}$/;
 // Start blank, like a freshly opened calculator.
 const START = { expr: '', display: '0' };
 const START_HISTORY: CalcEntry[] = [];
@@ -37,10 +44,12 @@ export default function Calculator() {
   const [unlocking, setUnlocking] = useState(false);
   const [history, setHistory] = useState<CalcEntry[]>(START_HISTORY);
   const [panel, setPanel] = useState<Panel>({ kind: 'none' });
+  const [showCreate, setShowCreate] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { data, recordBaitOpen, finishBaitOpen } = useStore();
+  const { recordBaitOpen, finishBaitOpen, status, decoys, unlock, lock } = useStore();
   const { t } = useT();
-  const activeBaits = (type: Bait['type']) => data.baits.filter((b) => b.active && b.type === type);
+  // Decoys come from the plaintext decoy index, so they run even while the vault is locked.
+  const activeBaits = (type: Bait['type']) => decoys.filter((b) => b.active && b.type === type);
   const { width, height } = useScreenSize();
   // On shorter screens, shrink the five key rows so the display keeps its room (~370 for everything else).
   const key = Math.min(80, Math.floor((width - 32 - 36) / 4), Math.floor((height - 370) / 5));
@@ -53,9 +62,12 @@ export default function Calculator() {
       setUnlocking(false);
       setHistory(START_HISTORY);
       setPanel({ kind: 'none' });
-      // Back on the calculator means locked again; the code is needed to return.
+      setShowCreate(false);
+      // Back on the calculator means locked again: drop the navigation flag AND clear the key and
+      // decrypted data from memory, so returning requires the PIN.
       session.lock();
-    }, []),
+      lock();
+    }, [lock]),
   );
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -96,11 +108,29 @@ export default function Calculator() {
       return;
     }
     if (k === '=') {
-      if (expr.replace(/\s/g, '') === SECRET) {
-        setUnlocking(true);
-        session.unlock();
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => router.push('/home'), 900);
+      const s = expr.replace(/\s/g, '');
+      // First run: the open code reveals PIN setup. After a PIN exists it is just a number.
+      if (status === 'setup' && s === OPEN_CODE) {
+        setShowCreate(true);
+        return;
+      }
+      // A plausible PIN (4–12 digits): try to unlock. A wrong PIN or an active lockout silently
+      // falls back to showing the result of the "calculation", so the disguise never breaks.
+      if ((status === 'locked' || status === 'ready') && PIN_RE.test(s)) {
+        unlock(s).then((res) => {
+          if (res.ok) {
+            setUnlocking(true);
+            session.unlock();
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => router.push('/home'), 900);
+          } else {
+            const v = evaluate(s);
+            const result = v == null ? 'Error' : formatResult(v);
+            setExpr(s + ' =');
+            setDisplay(result);
+            if (v != null) setHistory((h) => [...h.slice(-49), { expr: s, result }]);
+          }
+        });
         return;
       }
       const v = evaluate(expr);
@@ -214,6 +244,19 @@ export default function Calculator() {
         </SafeAreaView>
       )}
       {panel.kind === 'decoy' && <DecoyView bait={panel.bait} onClose={closePanel} />}
+
+      {showCreate && (
+        <PinSetup
+          onDone={() => {
+            setShowCreate(false);
+            setUnlocking(true);
+            session.unlock();
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => router.push('/home'), 900);
+          }}
+          onCancel={() => setShowCreate(false)}
+        />
+      )}
 
       {unlocking && (
         <View style={styles.unlock}>

@@ -2,9 +2,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
+import { getDevicePepper } from './crypto/deviceSecret';
+import { EMPTY_GUARD, Guard, isLockedOut, lockRemaining, registerFailure, registerSuccess } from './crypto/lockout';
+import { randomBytes } from './crypto/random';
+import { createEnvelope, openEnvelope, rewrapPin, sealData, VaultCorruptError, VaultEnvelope, WrongPinError } from './crypto/vaultCrypto';
+
 /**
  * Everything Nazar remembers lives here, persisted on this device only. Nothing in this
  * file is sample data: sample records for demos live in sample.ts and are never stored.
+ *
+ * At rest, the whole data blob is encrypted with AES-256-GCM under a key derived from the user's
+ * PIN (see crypto/vaultCrypto.ts) and loaded only after unlock. Two things stay in plaintext so the
+ * calculator disguise keeps working BEFORE unlock, and both are non-evidence by design:
+ *   - the decoy definitions (DECOY_KEY): fake bait labels the user invents to catch a snoop; and
+ *   - a small pending buffer (PENDING_KEY): decoy-open events captured while locked, which are
+ *     folded into the encrypted vault (and wiped from plaintext) the next time the PIN is entered.
+ * This plaintext-until-unlock window for just-captured events is the one documented gap; the fix is
+ * public-key sealed captures (see the Phase C notes), which needs no new secret-at-rest.
  */
 
 export type Lang = 'en' | 'hi';
@@ -137,7 +151,17 @@ type Data = {
   planDone: Record<string, boolean>;
 };
 
-const KEY = 'nazar:data:v1';
+/** Legacy pre-encryption store (plaintext). Read once, migrated into the encrypted vault, then deleted. */
+const LEGACY_KEY = 'nazar:data:v1';
+/** The encrypted vault envelope (useless without the PIN). */
+const VAULT_KEY = 'nazar:vault:v1';
+/** Non-secret retry state (failed-attempt count + lockout). Holds no PIN and no key. */
+const GUARD_KEY = 'nazar:guard:v1';
+/** Plaintext decoy definitions, so the calculator can show decoys before unlock. Fake labels, not evidence. */
+const DECOY_KEY = 'nazar:decoys:v1';
+/** Plaintext buffer of decoy-open events captured while locked; folded into the vault on unlock. */
+const PENDING_KEY = 'nazar:pending:v1';
+
 /** 32 random bytes as hex. Used for the device-scoped owner secret. */
 const genSecret = () => Array.from(Crypto.getRandomBytes(32), (b) => b.toString(16).padStart(2, '0')).join('');
 
@@ -160,59 +184,217 @@ const EMPTY: Data = {
   planDone: {},
 };
 
-export type LoadStatus = 'loading' | 'ready' | 'error';
+/**
+ * loading: reading storage. setup: no vault yet — the user must create a PIN (any legacy data is
+ * migrated then). locked: a vault exists but the PIN hasn't been entered this session. ready:
+ * unlocked, data decrypted in memory. error: storage or vault failure.
+ */
+export type LoadStatus = 'loading' | 'setup' | 'locked' | 'ready' | 'error';
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 /**
  * Forward-compatible load. v1 saves had `wasMe` on decoy events and no audit fields; both are
  * handled by spreading over EMPTY (which adds the new audit arrays) without discarding any
- * existing user data, including Quiet Check entries and their saved evidence.
+ * existing user data, including Quiet Check entries and their saved evidence. Pure (no crypto):
+ * the owner secret is minted by the store, not here, so this stays trivially testable.
  */
 function migrate(raw: Partial<Data>): Data {
   const d = { ...EMPTY, ...raw, version: 2 as const };
-  if (!d.ownerSecret) d.ownerSecret = genSecret();
   const old = (raw.baitEvents ?? []) as (BaitEvent & { wasMe?: boolean })[];
   d.baitEvents = old.map(({ wasMe, ...e }) => (wasMe && !e.review ? { ...e, review: 'me' as const } : e));
   return d;
 }
 
+/** Ensure a device-scoped owner secret exists (minted once, kept inside the encrypted vault). */
+function withSecret(d: Data): Data {
+  return d.ownerSecret ? d : { ...d, ownerSecret: genSecret() };
+}
+
+/** Fold decoy-open events captured while locked into the data, skipping any already present. */
+function foldPending(d: Data, pending: BaitEvent[]): Data {
+  if (!pending.length) return d;
+  const known = new Set(d.baitEvents.map((e) => e.id));
+  const fresh = pending.filter((e) => !known.has(e.id));
+  return fresh.length ? { ...d, baitEvents: [...d.baitEvents, ...fresh] } : d;
+}
+
+/** Outcome of a PIN unlock attempt, so the calculator can react without leaking which case occurred. */
+export type UnlockResult = { ok: true } | { ok: false; reason: 'wrong_pin' | 'locked_out' | 'corrupt'; remainingMs?: number };
+
 function useStoreValue() {
   const [data, setData] = useState<Data>(EMPTY);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [saveFailed, setSaveFailed] = useState(false);
-  const loaded = useRef(false);
+  // Decoy labels readable while locked, so the calculator disguise keeps working before unlock.
+  const [decoys, setDecoys] = useState<Bait[]>([]);
 
-  const read = useCallback(() => {
-    AsyncStorage.getItem(KEY)
-      .then((raw) => {
-        if (raw) setData(migrate(JSON.parse(raw)));
-        // First run: mint the device-scoped owner secret so it is stored once and reused.
-        else setData((d) => ({ ...d, ownerSecret: d.ownerSecret || genSecret() }));
-        loaded.current = true;
-        setStatus('ready');
+  const dekRef = useRef<Uint8Array | null>(null); // data-encryption key, held only while unlocked
+  const envRef = useRef<VaultEnvelope | null>(null);
+  const pepperRef = useRef<Uint8Array | null>(null);
+  const guardRef = useRef<Guard>(EMPTY_GUARD);
+  const legacyRef = useRef<Data | null>(null); // migrated plaintext awaiting encryption on PIN creation
+  const pendingRef = useRef<BaitEvent[]>([]); // decoy opens captured while locked
+  const canPersist = useRef(false); // true only once unlocked — guards against writing EMPTY over the vault
+
+  // Load from storage into state on mount. Promise-chain form so every setState sits inside a
+  // callback (reacting to the external store resolving), never synchronously in the effect body.
+  const boot = useCallback(() => {
+    getDevicePepper()
+      .then((pepper) => {
+        pepperRef.current = pepper;
+        return Promise.all([
+          AsyncStorage.getItem(GUARD_KEY),
+          AsyncStorage.getItem(DECOY_KEY),
+          AsyncStorage.getItem(PENDING_KEY),
+          AsyncStorage.getItem(VAULT_KEY),
+          AsyncStorage.getItem(LEGACY_KEY),
+        ]);
+      })
+      .then(([guardRaw, decoyRaw, pendingRaw, vaultRaw, legacyRaw]) => {
+        guardRef.current = guardRaw ? (JSON.parse(guardRaw) as Guard) : { ...EMPTY_GUARD };
+        pendingRef.current = pendingRaw ? (JSON.parse(pendingRaw) as BaitEvent[]) : [];
+        const decoyIndex = decoyRaw ? (JSON.parse(decoyRaw) as Bait[]) : [];
+        if (vaultRaw) {
+          envRef.current = JSON.parse(vaultRaw) as VaultEnvelope;
+          setDecoys(decoyIndex);
+          setStatus('locked');
+        } else {
+          // No vault yet: migrate any legacy plaintext so it can be encrypted once a PIN is set.
+          legacyRef.current = legacyRaw ? withSecret(migrate(JSON.parse(legacyRaw))) : null;
+          setDecoys(legacyRef.current?.baits ?? decoyIndex);
+          setStatus('setup');
+        }
       })
       .catch(() => setStatus('error'));
   }, []);
-  useEffect(read, [read]);
-  const load = useCallback(() => {
+  useEffect(boot, [boot]);
+  const retryLoad = useCallback(() => {
     setStatus('loading');
-    read();
-  }, [read]);
+    boot();
+  }, [boot]);
 
+  const persistGuard = useCallback((g: Guard) => {
+    guardRef.current = g;
+    AsyncStorage.setItem(GUARD_KEY, JSON.stringify(g)).catch(() => {});
+  }, []);
+
+  const writeDecoys = useCallback((baits: Bait[]) => {
+    setDecoys(baits);
+    AsyncStorage.setItem(DECOY_KEY, JSON.stringify(baits)).catch(() => {});
+  }, []);
+
+  // Encrypted write-through. Runs only after unlock/create (canPersist) and never with the empty
+  // defaults; re-seals the blob under the in-memory DEK (fast — no KDF) and mirrors decoy labels.
   useEffect(() => {
-    // Never overwrite stored data with the empty defaults before (or after a failed) load.
-    if (!loaded.current || status !== 'ready') return;
-    AsyncStorage.setItem(KEY, JSON.stringify(data))
+    if (!canPersist.current || !dekRef.current || !envRef.current || status !== 'ready') return;
+    const env = sealData(dekRef.current, JSON.stringify(data), envRef.current, randomBytes);
+    envRef.current = env;
+    AsyncStorage.setItem(VAULT_KEY, JSON.stringify(env))
       .then(() => setSaveFailed(false))
       .catch(() => setSaveFailed(true));
-  }, [data, status]);
+    writeDecoys(data.baits);
+  }, [data, status, writeDecoys]);
 
   const update = useCallback((fn: (d: Data) => Data) => setData(fn), []);
 
+  // Finish a successful unlock/create: fold locked-capture events, wipe the plaintext buffer, go ready.
+  const finishUnlock = useCallback((d: Data) => {
+    const merged = foldPending(d, pendingRef.current);
+    pendingRef.current = [];
+    AsyncStorage.removeItem(PENDING_KEY).catch(() => {});
+    canPersist.current = true;
+    setData(merged);
+    setStatus('ready');
+  }, []);
+
+  /** First run: create the PIN, encrypt the (migrated) data under it, and open the vault. */
+  const createPin = useCallback(
+    async (pin: string): Promise<UnlockResult> => {
+      try {
+        const base = withSecret(foldPending(legacyRef.current ?? EMPTY, pendingRef.current));
+        await new Promise((r) => setTimeout(r, 0)); // let the UI paint before the brief scrypt
+        const env = createEnvelope(pin, JSON.stringify(base), randomBytes, pepperRef.current);
+        envRef.current = env;
+        dekRef.current = openEnvelope(pin, env, pepperRef.current).dek;
+        await AsyncStorage.setItem(VAULT_KEY, JSON.stringify(env));
+        await AsyncStorage.multiRemove([LEGACY_KEY, PENDING_KEY]);
+        legacyRef.current = null;
+        pendingRef.current = [];
+        persistGuard(registerSuccess());
+        canPersist.current = true;
+        writeDecoys(base.baits);
+        setData(base);
+        setStatus('ready');
+        return { ok: true };
+      } catch {
+        return { ok: false, reason: 'corrupt' };
+      }
+    },
+    [persistGuard, writeDecoys],
+  );
+
+  /** Unlock with the PIN. Enforces lockout, counts failures, and never reveals which digit was wrong. */
+  const unlock = useCallback(
+    async (pin: string): Promise<UnlockResult> => {
+      const now = Date.now();
+      if (isLockedOut(guardRef.current, now)) return { ok: false, reason: 'locked_out', remainingMs: lockRemaining(guardRef.current, now) };
+      const env = envRef.current;
+      if (!env) return { ok: false, reason: 'corrupt' };
+      await new Promise((r) => setTimeout(r, 0));
+      try {
+        const { dek, plaintext } = openEnvelope(pin, env, pepperRef.current);
+        dekRef.current = dek;
+        persistGuard(registerSuccess());
+        finishUnlock(withSecret(migrate(JSON.parse(plaintext))));
+        return { ok: true };
+      } catch (e) {
+        if (e instanceof WrongPinError) {
+          const g = registerFailure(guardRef.current, Date.now());
+          persistGuard(g);
+          return { ok: false, reason: 'wrong_pin', remainingMs: lockRemaining(g, Date.now()) };
+        }
+        if (e instanceof VaultCorruptError) setStatus('error');
+        return { ok: false, reason: 'corrupt' };
+      }
+    },
+    [persistGuard, finishUnlock],
+  );
+
+  /**
+   * Clear the key and decrypted data from memory. Called when returning to the calculator
+   * (Exit/background). Depends only on refs so its identity is STABLE — a changing identity would
+   * re-fire the calculator's focus effect and wrongly re-lock right after an unlock.
+   */
+  const lock = useCallback(() => {
+    if (!canPersist.current) return; // nothing unlocked to clear
+    canPersist.current = false; // set first (sync) so the save effect can't write EMPTY over the vault
+    dekRef.current = null;
+    setData(EMPTY);
+    setStatus(envRef.current ? 'locked' : 'setup');
+  }, []);
+
+  /** Change the PIN by re-wrapping the same DEK (data is not re-encrypted). */
+  const changePin = useCallback(async (oldPin: string, newPin: string): Promise<UnlockResult> => {
+    const env = envRef.current;
+    if (!env) return { ok: false, reason: 'corrupt' };
+    await new Promise((r) => setTimeout(r, 0));
+    try {
+      const next = rewrapPin(oldPin, newPin, env, randomBytes, pepperRef.current);
+      envRef.current = next;
+      await AsyncStorage.setItem(VAULT_KEY, JSON.stringify(next));
+      return { ok: true };
+    } catch (e) {
+      if (e instanceof WrongPinError) return { ok: false, reason: 'wrong_pin' };
+      return { ok: false, reason: 'corrupt' };
+    }
+  }, []);
+
+  /** Milliseconds of unlock lockout remaining (0 if unlock is allowed now). */
+  const pinLockoutRemaining = useCallback(() => lockRemaining(guardRef.current, Date.now()), []);
+
   const actions = useMemo(
     () => ({
-      retryLoad: load,
       setLang: (lang: Lang) => update((d) => ({ ...d, lang })),
       setShowSample: (showSample: boolean) => update((d) => ({ ...d, showSample })),
 
@@ -235,14 +417,28 @@ function useStoreValue() {
           emailBaits: d.emailBaits.filter((b) => b.id !== id),
           linkEvents: d.linkEvents.filter((e) => e.baitId !== id),
         })),
-      /** Called by the calculator when a decoy is actually opened. */
+      /**
+       * Called by the calculator when a decoy is actually opened. While unlocked it goes straight
+       * into the encrypted vault; while LOCKED it is buffered in the plaintext pending store and
+       * folded into the vault on the next unlock (see the note at the top of this file).
+       */
       recordBaitOpen: (baitId: string) => {
         const id = uid();
-        update((d) => ({ ...d, baitEvents: [...d.baitEvents, { id, baitId, at: Date.now() }] }));
+        const ev: BaitEvent = { id, baitId, at: Date.now() };
+        if (canPersist.current) update((d) => ({ ...d, baitEvents: [...d.baitEvents, ev] }));
+        else {
+          pendingRef.current = [...pendingRef.current, ev];
+          AsyncStorage.setItem(PENDING_KEY, JSON.stringify(pendingRef.current)).catch(() => {});
+        }
         return id;
       },
-      finishBaitOpen: (eventId: string, durationMs: number) =>
-        update((d) => ({ ...d, baitEvents: d.baitEvents.map((e) => (e.id === eventId ? { ...e, durationMs } : e)) })),
+      finishBaitOpen: (eventId: string, durationMs: number) => {
+        if (canPersist.current) update((d) => ({ ...d, baitEvents: d.baitEvents.map((e) => (e.id === eventId ? { ...e, durationMs } : e)) }));
+        else {
+          pendingRef.current = pendingRef.current.map((e) => (e.id === eventId ? { ...e, durationMs } : e));
+          AsyncStorage.setItem(PENDING_KEY, JSON.stringify(pendingRef.current)).catch(() => {});
+        }
+      },
       /** "Was this you?" for either kind of event. */
       reviewEvent: (eventId: string, review: EventReview | undefined) =>
         update((d) => ({
@@ -326,10 +522,10 @@ function useStoreValue() {
 
       togglePlanStep: (key: string) => update((d) => ({ ...d, planDone: { ...d.planDone, [key]: !d.planDone[key] } })),
     }),
-    [update, load],
+    [update],
   );
 
-  return { data, status, saveFailed, ...actions };
+  return { data, status, saveFailed, decoys, retryLoad, createPin, unlock, lock, changePin, pinLockoutRemaining, ...actions };
 }
 
 type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;

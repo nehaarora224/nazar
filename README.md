@@ -19,7 +19,7 @@ To build an installable Android APK in the cloud, run `npx eas-cli@latest build 
 
 ## How it works
 
-Nazar opens only from the calculator: type **`1947 =`**. A reload, a deep link or a cold start always lands on the calculator first.
+Nazar opens only from the calculator. On a brand-new install, type the open code **`1947 =`** once to reveal the **Create your PIN** screen and choose a private PIN (4–12 digits). After that, unlock by typing **your PIN** on the calculator and pressing **`=`**. A reload, a deep link or a cold start always lands on the calculator first, and leaving Nazar clears the key from memory, so the PIN is needed again. A wrong PIN just shows a normal calculation, so the disguise never gives the app away.
 
 | Screen | Route | What it really does |
 |--------|-------|---------------------|
@@ -50,7 +50,15 @@ GET  {url}/baits/{id}/events                                                  ->
 
 The service should send the email to the given address with a unique link, serve a blank page at that link, and record each open. Templates name no real company and never ask for a password. The UI only allows sending to an address she confirms is her own.
 
-All data is stored on the device with AsyncStorage (the browser's localStorage on web). Android backups are off (`allowBackup: false`). There is no server.
+### Security of what's stored
+
+Everything Nazar saves is kept on the device only (AsyncStorage; the browser's localStorage on web) — there is no server and no cloud upload — and the whole data blob is **encrypted at rest**:
+
+- The data is sealed with **AES-256-GCM** under a random data key. That key is wrapped under a key derived from the user's **PIN** with **scrypt** (memory-hard) and a random salt. The PIN is never stored — a wrong PIN simply fails the GCM auth tag, which is the unlock check. Crypto is pure-JS (`@noble/ciphers` + `@noble/hashes`), so it runs identically on web, native and in the unit tests (`crypto/vaultCrypto.ts`).
+- **Retry protection:** consecutive wrong PINs trigger an escalating lockout (`crypto/lockout.ts`), on top of the deliberately slow scrypt cost per attempt.
+- Two things stay in plaintext so the calculator can still catch a snoop **before** unlock, and both are non-evidence by design: the **decoy definitions** (fake bait labels), and a small **pending buffer** of decoy-opens captured while locked, which is folded into the encrypted vault (and wiped) on the next unlock.
+
+**This is real encryption, not a security theatre PIN screen — but read the honest limits below before relying on it.** In particular, a hardware-keystore pepper (which would stop offline brute force of a short PIN) still needs a native build and is **not active yet**; until then, prefer a longer PIN. Android backups are off (`allowBackup: false`).
 
 **Languages:** English and हिन्दी. Switch from the header on every screen. The choice is saved. Strings live in `src/i18n/en.ts` and `src/i18n/hi.ts`; TypeScript fails the build if a Hindi string is missing. The calculator disguise intentionally stays in English, like a stock calculator.
 
@@ -75,11 +83,12 @@ src/
   ble/                    real Bluetooth scan (native dev build only; unsupported on web/Expo Go)
   exif.ts, exifReader.ts  on-device photo EXIF/GPS reading for the Photo audit module
   i18n/                   en.ts, hi.ts, useT() with date/time formatting
-  store.tsx               persisted state (baits, email baits, events, checks, evidence, language)
+  store.tsx               persisted state; PIN-encrypted vault + plaintext decoy/pending tiers
+  crypto/                 vaultCrypto (AES-GCM + scrypt), lockout, device-pepper seam, RNG
   sample.ts               fictional, labelled sample records (never stored)
   view.ts                 merges real + sample records; summaries for Home, Exposure, Vault
   baitService.ts          optional email-bait service client (EXPO_PUBLIC_BAIT_API_URL)
-  session.ts              in-memory unlock flag
+  session.ts              in-memory navigation-unlock flag (the key/data live in the store)
   systemSettings.ts       Android system-settings shortcuts
   theme.ts                colour, type, spacing and radius tokens
 ```
@@ -87,7 +96,7 @@ src/
 ## Known limits
 
 - **Bluetooth scanning needs a native dev build and is unverified on hardware.** Real BLE scanning uses `react-native-ble-plx`, so it runs only in a development build — not in Expo Go or on the web, where the scan reports "unsupported" instead of inventing devices. The scan logic is covered by mocked tests but has **not yet been run against a real device**.
-- **Email baits are unverified end-to-end.** They need the service described above (`EXPO_PUBLIC_BAIT_API_URL`); without it, sending is reported as not set up. The full send → inbox → link-open path has **not been confirmed with a live email provider**.
+- **Email baits — what's verified vs. not.** The backend *logic* (create, honest "not set up", owner-scoping, CSRF, link-open recording, webhook signature + idempotency, rate limits, delete) is covered by mocked unit tests. **Not** verified, because they need live credentials/infrastructure this environment can't reach (`api.resend.com` is blocked by network policy): real **provider acceptance** (a live Resend API key + verified sender), **inbox delivery** (Resend delivering + the `email.delivered` webhook), and **durable storage** (Vercel KV). Provider acceptance, inbox delivery and link-open recording are distinct steps — none of the live ones has been confirmed end-to-end.
+- **Encryption at rest, honest limits.** (1) A short numeric PIN has a small keyspace; anyone who copies the encrypted blob off the device can try every PIN **offline**, slowed only by scrypt. The fix is a hardware-keystore pepper (`crypto/deviceSecret.ts`), which needs a native dev build with `expo-secure-store` and is **not active yet** — so prefer a longer PIN for now. (2) Decoy-opens captured **while locked** sit in a plaintext buffer until the next unlock folds them into the vault; closing that window needs public-key sealed captures. (3) **Exported files are not encrypted** — the Vault download is plain text (the app warns before downloading); the data is only encrypted *inside* Nazar.
 - A calculator decoy only sees what happens inside this calculator on this phone.
 - The Digital Footprint Audit, Accounts Checks and Tracker Check are guided reviews: their results are what the user recorded, not independently verified findings.
-- No real authentication or at-rest encryption yet. Unlock is a shared PIN held in memory, and on-device data is stored unencrypted.
