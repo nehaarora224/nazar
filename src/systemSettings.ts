@@ -7,6 +7,9 @@ export const canOpenSystemSettings = Platform.OS === 'android';
 const ACTIONS = {
   privacy: [IntentLauncher.ActivityAction.PRIVACY_SETTINGS, IntentLauncher.ActivityAction.SETTINGS],
   location: [IntentLauncher.ActivityAction.LOCATION_SOURCE_SETTINGS, IntentLauncher.ActivityAction.SETTINGS],
+  accessibility: [IntentLauncher.ActivityAction.ACCESSIBILITY_SETTINGS, IntentLauncher.ActivityAction.SETTINGS],
+  apps: [IntentLauncher.ActivityAction.APPLICATION_SETTINGS, IntentLauncher.ActivityAction.MANAGE_APPLICATIONS_SETTINGS, IntentLauncher.ActivityAction.SETTINGS],
+  security: [IntentLauncher.ActivityAction.SECURITY_SETTINGS, IntentLauncher.ActivityAction.SETTINGS],
   settings: [IntentLauncher.ActivityAction.SETTINGS],
 } as const;
 

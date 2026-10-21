@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
-import { CheckCircleIcon, CircleIcon, FileTextIcon, XCircleIcon } from 'phosphor-react-native';
+import { CheckCircleIcon, CircleIcon, DeviceMobileIcon, FileTextIcon, XCircleIcon } from 'phosphor-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '../../components/Screen';
-import { Card, InfoBox, ListCard, ListRow, PageTitle, PrimaryButton, SampleBanner, SectionTitle, Stats, StatusLine, SubHeader } from '../../components/ui';
+import { Card, InfoBox, ListCard, ListRow, PageTitle, PrimaryButton, SampleBanner, SecondaryButton, SectionTitle, Stats, StatusLine, SubHeader } from '../../components/ui';
 import { AUDIT_MODULES, moduleKey } from '../../content/audit';
 import { TKey, useT } from '../../i18n';
 import { AuditModuleId, RemediationStatus, useStore } from '../../store';
@@ -71,6 +71,11 @@ export default function DigitalFootprintAudit() {
       )}
 
       <PrimaryButton icon={FileTextIcon} label={t('af.viewReport')} onPress={() => router.navigate('/audit-report')} />
+
+      <SectionTitle>{t('af.deviceTitle')}</SectionTitle>
+      <Text style={[type.body, { fontSize: 14 }]}>{t('af.deviceSub')}</Text>
+      <SecondaryButton icon={DeviceMobileIcon} label={t('af.deviceCheck')} onPress={() => router.navigate('/permission-audit')} />
+
       <InfoBox body={t('af.caveat')} />
     </Screen>
   );

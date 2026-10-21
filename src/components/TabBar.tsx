@@ -22,6 +22,7 @@ const PARENT_TAB: Record<string, string> = {
   'digital-footprint-audit': 'home',
   'audit-module': 'home',
   'audit-report': 'home',
+  'permission-audit': 'home',
   tracker: 'home',
   'tracker-detail': 'home',
   'ble-scan': 'home',

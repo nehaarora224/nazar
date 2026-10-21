@@ -37,6 +37,7 @@ export default function NazarLayout() {
       <Tabs.Screen name="digital-footprint-audit" />
       <Tabs.Screen name="audit-module" />
       <Tabs.Screen name="audit-report" />
+      <Tabs.Screen name="permission-audit" />
       <Tabs.Screen name="tracker" />
       <Tabs.Screen name="tracker-detail" />
       <Tabs.Screen name="ble-scan" />

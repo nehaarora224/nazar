@@ -13,7 +13,20 @@ npm run typecheck
 npm run lint
 ```
 
-To build an installable Android APK in the cloud, run `npx eas-cli@latest build -p android --profile preview` (this needs an Expo account).
+### Android development build (for native features)
+
+Nazar has native code (the BLE scan and the local **permission-audit** module), so those features need a **development build** — they do not run in Expo Go or on the web. `eas.json` defines the profiles. These steps run on your machine / in EAS, **not** in this repo's cloud sandbox (which has no Android SDK, and `expo.dev` is unreachable from it):
+
+```bash
+npm install
+npx expo install expo-dev-client   # one-time: adds the dev-client runtime at the SDK-correct version
+npx eas-cli@latest login           # your own Expo account
+npx eas-cli@latest init            # links the project and writes extra.eas.projectId into app.json
+npx eas-cli@latest build -p android --profile development   # cloud build of the dev client (.apk)
+# install the APK, then: npx expo start --dev-client  and open it from the dev client
+```
+
+`npx eas-cli@latest build -p android --profile preview` makes a standalone internal **APK**; `--profile production` makes an **app-bundle**. No account IDs, credentials, or `projectId` are committed — `eas init` fills those in for you.
 
 **Web demo (Vercel):** `vercel.json` builds the web version with `npx expo export --platform web` into `dist/` and sends every route to `index.html`. Import the repo in Vercel and leave Framework Preset as "Other". In a desktop browser (600px wide or more) the app is shown inside a centred 412×892 phone frame (`src/components/DeviceFrame.tsx`) that shrinks to fit shorter laptop screens; on phones and narrow windows it runs full screen.
 
@@ -27,6 +40,7 @@ Nazar opens only from the calculator. On a brand-new install, type the open code
 | Home | `/home` | Greeting, a compact "N of 3 checks look clear" summary, the Bait Test card (with loading, error, empty and ready states) and the Checks list. Every status comes from real records, or from labelled samples. |
 | Accounts & Sessions | `/accounts`, `/account-check`, `/account-item`, `/session` | Accounts, Devices, Sharing and Checks tabs. The guided **Checks** are the real part: Nazar has no account access and never asks for passwords, so her answers are what she recorded, not verified findings. The Devices and Sharing tabs show labelled **sample** examples of what to look for — Nazar can't read a service's device or sharing list itself. |
 | Digital Footprint Audit | `/digital-footprint-audit`, `/audit-module`, `/audit-report` | Guided checklist across Social, Location, Contact and Photo modules (replaces the old Quiet Check). The Photo module reads EXIF metadata from photos she picks, on-device, to flag embedded GPS coordinates. Findings and remediation steps she records are kept; a shareable report includes her own records only. |
+| This phone (permission audit) | `/permission-audit` | A read-only Android check (native dev build only; honest "needs the installed app" notice on web/Expo Go). It **requests no permissions** and uploads nothing. It separates (1) what Android directly confirms — Nazar's own permissions, developer-options/USB-debugging flags, and the enabled accessibility / notification-listener / device-admin lists; (2) what you must inspect yourself via deep-links to Settings; and (3) what Android does not expose to any app. It never claims a listed app is spyware or that it can detect all stalkerware. |
 | Tracker Check | `/tracker`, `/tracker-detail`, `/ble-scan` | A guided workflow for the phone's own unknown-tracker scan, with results recorded by her. A built-in Bluetooth scan (`/ble-scan`) is also available, but only in a native development build with the BLE module — on the web and in Expo Go it reports that it is unsupported rather than inventing devices (see Known limits). |
 | Bait Test | `/bait`, `/bait-new`, `/bait-detail` | **Email baits:** a test name, her own address (confirmed as hers), one of four unbranded templates, a preview, and an explicit confirmation before sending. Sending works only when a service is configured (see below); otherwise it honestly reports that it isn't set up. **Calculator decoys:** these really work on the device. Each bait has an activity timeline. "Review event" asks "Was this you?", and "No" offers to save the event to the Vault, after another confirmation. |
 | Exposure | `/exposure` | Five categories plus a findings list, built from real records and labelled samples, with filters. |
@@ -82,6 +96,10 @@ src/
   content/                account-check and Digital Footprint Audit catalogues, bait content
   ble/                    real Bluetooth scan (native dev build only; unsupported on web/Expo Go)
   exif.ts, exifReader.ts  on-device photo EXIF/GPS reading for the Photo audit module
+
+modules/
+  permission-audit/       local Kotlin Expo module: read-only Android permission audit (no permissions requested)
+eas.json                  EAS build profiles (development dev-client / preview APK / production bundle)
   i18n/                   en.ts, hi.ts, useT() with date/time formatting
   store.tsx               persisted state; PIN-encrypted vault + plaintext decoy/pending tiers
   crypto/                 vaultCrypto (AES-GCM + scrypt), lockout, device-pepper seam, RNG
@@ -96,6 +114,8 @@ src/
 ## Known limits
 
 - **Bluetooth scanning needs a native dev build and is unverified on hardware.** Real BLE scanning uses `react-native-ble-plx`, so it runs only in a development build — not in Expo Go or on the web, where the scan reports "unsupported" instead of inventing devices. The scan logic is covered by mocked tests but has **not yet been run against a real device**.
+- **The permission audit is native-only and unverified on a device yet.** The Kotlin module (`modules/permission-audit`) is discovered by Expo autolinking and its pure JS shaping is unit-tested, but the Android APIs it calls have **not yet run in a real build** (this sandbox has no Android SDK) — that is Phase E. It reads only what any app may read, requests no permissions, and is honest about the three buckets (verified / inspect-yourself / not-exposed). It does **not** prove spying or detect all stalkerware.
+- **Hardware-keystore pepper for the PIN is still not active.** Phase D confirmed two viable paths (`expo-secure-store`, or an Android Keystore method on the local native module), but both need a native dev build + on-device verification to confirm the key is hardware-backed, so it was **not wired in** (activating an unverified pepper could lock existing vaults). Until then a short PIN remains offline-brute-forceable (see Phase C) — prefer a longer PIN.
 - **Email baits — what's verified vs. not.** The backend *logic* (create, honest "not set up", owner-scoping, CSRF, link-open recording, webhook signature + idempotency, rate limits, delete) is covered by mocked unit tests. **Not** verified, because they need live credentials/infrastructure this environment can't reach (`api.resend.com` is blocked by network policy): real **provider acceptance** (a live Resend API key + verified sender), **inbox delivery** (Resend delivering + the `email.delivered` webhook), and **durable storage** (Vercel KV). Provider acceptance, inbox delivery and link-open recording are distinct steps — none of the live ones has been confirmed end-to-end.
 - **Encryption at rest, honest limits.** (1) A short numeric PIN has a small keyspace; anyone who copies the encrypted blob off the device can try every PIN **offline**, slowed only by scrypt. The fix is a hardware-keystore pepper (`crypto/deviceSecret.ts`), which needs a native dev build with `expo-secure-store` and is **not active yet** — so prefer a longer PIN for now. (2) Decoy-opens captured **while locked** sit in a plaintext buffer until the next unlock folds them into the vault; closing that window needs public-key sealed captures. (3) **Exported files are not encrypted** — the Vault download is plain text (the app warns before downloading); the data is only encrypted *inside* Nazar.
 - A calculator decoy only sees what happens inside this calculator on this phone.

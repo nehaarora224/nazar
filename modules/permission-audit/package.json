@@ -1,0 +1,7 @@
+{
+  "name": "permission-audit",
+  "version": "1.0.0",
+  "description": "Local Expo module: read-only Android permission & settings audit for Nazar. Requests no runtime permissions.",
+  "main": "index.ts",
+  "private": true
+}

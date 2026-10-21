@@ -1,0 +1,24 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'com.simplecalc.permissionaudit'
+version = '1.0.0'
+
+// Pulls in the Expo module Gradle conventions (SDK/Kotlin versions, expo-modules-core dependency),
+// so this local module compiles against whatever Expo SDK the app resolves — no hardcoded versions.
+apply from: project(':expo-modules-core').file('ExpoModulesCorePlugin.gradle')
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useExpoPublishing()
+
+android {
+  namespace = 'com.simplecalc.permissionaudit'
+  defaultConfig {
+    minSdkVersion safeExtGet('minSdkVersion', 24)
+    compileSdkVersion safeExtGet('compileSdkVersion', 34)
+    targetSdkVersion safeExtGet('targetSdkVersion', 34)
+  }
+  lintOptions {
+    abortOnError false
+  }
+}

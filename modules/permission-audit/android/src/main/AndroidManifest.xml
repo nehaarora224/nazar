@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This module requests NO permissions. Every signal it reads is available to an ordinary app
+  without any runtime or install-time permission: the app's own granted permissions, a few
+  read-only Settings flags, and the enabled accessibility / notification-listener / device-admin
+  lists. It deliberately does NOT declare QUERY_ALL_PACKAGES, so it cannot (and does not try to)
+  enumerate other installed apps.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

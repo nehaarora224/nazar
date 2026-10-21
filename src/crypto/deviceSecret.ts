@@ -18,6 +18,12 @@
  *      SecureStore.setItemAsync(KEY, hex, { keychainAccessible: AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY }).
  *   3. Return those bytes here. Re-wrapping existing vaults to add the pepper is a one-time
  *      rewrapPin()-style migration done the next time the user enters their PIN.
+ *
+ * Phase D note: an alternative to expo-secure-store is to add an Android Keystore-backed
+ * getOrCreatePepper() to the local native module (modules/permission-audit) — that avoids a new
+ * dependency. Either way it needs a native dev build to exist and a real device to VERIFY the key
+ * is hardware-backed, so this still returns null today. It is deliberately NOT wired in: activating
+ * an unverified pepper would change key derivation and could lock existing vaults (see Phase D/E).
  */
 export async function getDevicePepper(): Promise<Uint8Array | null> {
   return null;
