@@ -25,12 +25,12 @@ Nazar opens only from the calculator: type **`1947 =`**. A reload, a deep link o
 |--------|-------|---------------------|
 | Calculator (disguise) | `/` | A working stock-style calculator. History and the ⋮ menu hold any active calculator decoys. |
 | Home | `/home` | Greeting, a compact "N of 3 checks look clear" summary, the Bait Test card (with loading, error, empty and ready states) and the Checks list. Every status comes from real records, or from labelled samples. |
-| Accounts & Sessions | `/accounts`, `/account-check`, `/account-item`, `/session` | Accounts, Devices, Sharing and Checks tabs. The 10 guided checks are the real part: Nazar has no account access and never asks for passwords. Devices she records as unfamiliar appear in the Devices tab. |
-| Quiet Check | `/quiet-check` | Guided microphone, camera and location review. Android opens the system privacy and location settings. Her observations are kept as a timeline. |
-| Tracker Check | `/tracker`, `/tracker-detail` | A guided workflow around the phone's own unknown-tracker scan, with results recorded by her. Nazar does not scan Bluetooth itself. |
-| Bait Test | `/bait`, `/bait-new`, `/bait-detail` | **Email baits:** a test name, her own address (confirmed as hers), one of four unbranded templates, a preview, and an explicit confirmation before sending. **Calculator decoys:** these really work on the device. Each bait has an activity timeline. "Review event" asks "Was this you?", and "No" offers to save the event to the Vault, after another confirmation. |
+| Accounts & Sessions | `/accounts`, `/account-check`, `/account-item`, `/session` | Accounts, Devices, Sharing and Checks tabs. The guided **Checks** are the real part: Nazar has no account access and never asks for passwords, so her answers are what she recorded, not verified findings. The Devices and Sharing tabs show labelled **sample** examples of what to look for — Nazar can't read a service's device or sharing list itself. |
+| Digital Footprint Audit | `/digital-footprint-audit`, `/audit-module`, `/audit-report` | Guided checklist across Social, Location, Contact and Photo modules (replaces the old Quiet Check). The Photo module reads EXIF metadata from photos she picks, on-device, to flag embedded GPS coordinates. Findings and remediation steps she records are kept; a shareable report includes her own records only. |
+| Tracker Check | `/tracker`, `/tracker-detail`, `/ble-scan` | A guided workflow for the phone's own unknown-tracker scan, with results recorded by her. A built-in Bluetooth scan (`/ble-scan`) is also available, but only in a native development build with the BLE module — on the web and in Expo Go it reports that it is unsupported rather than inventing devices (see Known limits). |
+| Bait Test | `/bait`, `/bait-new`, `/bait-detail` | **Email baits:** a test name, her own address (confirmed as hers), one of four unbranded templates, a preview, and an explicit confirmation before sending. Sending works only when a service is configured (see below); otherwise it honestly reports that it isn't set up. **Calculator decoys:** these really work on the device. Each bait has an activity timeline. "Review event" asks "Was this you?", and "No" offers to save the event to the Vault, after another confirmation. |
 | Exposure | `/exposure` | Five categories plus a findings list, built from real records and labelled samples, with filters. |
-| Vault | `/vault`, `/evidence` | Saved and pending-review records, category filters, newest/oldest sorting, detail pages with timestamps, source and editable review notes, and a dated text summary to share (real records only). |
+| Vault | `/vault`, `/vault-add`, `/evidence` | Saved and pending-review records, category filters, newest/oldest sorting, detail pages with timestamps, source and editable review notes, a form to add a record by hand, a downloadable export and a dated text summary to share — both of which exclude sample records so demo data can never be presented as genuine evidence. |
 | Plan | `/plan` | Progress bar, next step, and the safe-order steps with Safe / May notice pills. Her ticks are saved. |
 
 Every page shares the new Home design language: a lavender-to-cream wash, 22px cards with soft shadows, Checks-style list cards, stat tiles, the EN | हिं switch, a solid Exit button with a "Leave Nazar now?" sheet, and 46px helpline buttons.
@@ -71,7 +71,9 @@ src/
     index.tsx             calculator disguise (+ bait decoys)
     (nazar)/              tabs: home, exposure, vault, plan + detail pages
   components/             Screen shell, headers, language toggle, cards, buttons, DeviceFrame
-  content/                account-check catalogue, bait icons
+  content/                account-check and Digital Footprint Audit catalogues, bait content
+  ble/                    real Bluetooth scan (native dev build only; unsupported on web/Expo Go)
+  exif.ts, exifReader.ts  on-device photo EXIF/GPS reading for the Photo audit module
   i18n/                   en.ts, hi.ts, useT() with date/time formatting
   store.tsx               persisted state (baits, email baits, events, checks, evidence, language)
   sample.ts               fictional, labelled sample records (never stored)
@@ -84,6 +86,8 @@ src/
 
 ## Known limits
 
-- No Bluetooth scanning. Real BLE scanning needs a native module (for example `react-native-ble-plx`) and a development build. It won't run in Expo Go or on the web.
-- A calculator decoy only sees what happens inside this calculator on this phone. Email baits need the service described above.
-- Quiet Check and Accounts are guided reviews. Their results are what the user recorded, not verified findings.
+- **Bluetooth scanning needs a native dev build and is unverified on hardware.** Real BLE scanning uses `react-native-ble-plx`, so it runs only in a development build — not in Expo Go or on the web, where the scan reports "unsupported" instead of inventing devices. The scan logic is covered by mocked tests but has **not yet been run against a real device**.
+- **Email baits are unverified end-to-end.** They need the service described above (`EXPO_PUBLIC_BAIT_API_URL`); without it, sending is reported as not set up. The full send → inbox → link-open path has **not been confirmed with a live email provider**.
+- A calculator decoy only sees what happens inside this calculator on this phone.
+- The Digital Footprint Audit, Accounts Checks and Tracker Check are guided reviews: their results are what the user recorded, not independently verified findings.
+- No real authentication or at-rest encryption yet. Unlock is a shared PIN held in memory, and on-device data is stored unencrypted.

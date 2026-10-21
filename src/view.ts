@@ -140,9 +140,10 @@ export type View = ReturnType<typeof buildView>;
 
 export function useView() {
   const { data } = useStore();
-  // Demo/seed data is shown alongside real records so the app looks populated. It is not labelled
-  // in the UI, but it is never written to storage and is excluded from the downloadable export.
-  const sample = useMemo(() => buildSample(), []);
+  // Demo/seed data is shown alongside real records so the app isn't empty on first run. Every
+  // sample item is labelled in the UI (a "Sample" badge and a banner), is never written to
+  // storage, is excluded from the downloadable export, and can be hidden from the banner.
+  const sample = useMemo(() => (data.showSample ? buildSample() : null), [data.showSample]);
   return useMemo(() => buildView(data, sample), [data, sample]);
 }
 
