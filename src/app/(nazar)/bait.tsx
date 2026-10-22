@@ -1,11 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
-import { EnvelopeSimpleIcon, FishSimpleIcon, PlusIcon } from 'phosphor-react-native';
+import { CameraIcon, EnvelopeSimpleIcon, FishSimpleIcon, PlusIcon } from 'phosphor-react-native';
 import { useCallback } from 'react';
 import { Text, View } from 'react-native';
 
 import { reviewKey, SEND_TONE, sendLabel, useReviewEvent } from '../../components/BaitParts';
 import { Screen } from '../../components/Screen';
-import { Empty, InfoBox, ListCard, ListRow, PageTitle, PrimaryButton, SampleBadge, SampleBanner, SecondaryButton, Stats, StatusLine, SubHeader } from '../../components/ui';
+import { Card, Empty, IconChip, InfoBox, ListCard, ListRow, PageTitle, PrimaryButton, SampleBadge, SampleBanner, SecondaryButton, Stats, StatusLine, SubHeader } from '../../components/ui';
 import { baitServiceConfigured, fetchLinkEvents } from '../../baitService';
 import { BAIT_ICON } from '../../content/baits';
 import { tplKey } from '../../content/templates';
@@ -114,6 +114,16 @@ export default function BaitTest() {
           <PrimaryButton icon={PlusIcon} label={t('baitW.createAnother')} onPress={() => router.navigate('/bait-new')} />
         </>
       )}
+
+      <Card onPress={() => router.navigate('/intruder')} label={t('ic.cardTitle')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <IconChip icon={CameraIcon} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={type.label}>{t('ic.cardTitle')}</Text>
+            <Text style={[type.body, { fontSize: 13 }]}>{t('ic.cardBody')}</Text>
+          </View>
+        </View>
+      </Card>
 
       <InfoBox title={t('bait.limits.title')} body={t('bait.limits.body')} />
       {v.showSample && (

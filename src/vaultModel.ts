@@ -26,7 +26,7 @@ export const SEVERITY_ORDER: Severity[] = ['info', 'low', 'medium', 'high'];
 export type Relevance = 'confirmed' | 'reported' | 'unverified';
 
 /** What produced the evidence. */
-export type EvidenceGroup = 'bait_catch' | 'decoy_catch' | 'bait_sent' | 'bait_created' | 'permaudit' | 'footprint' | 'manual';
+export type EvidenceGroup = 'bait_catch' | 'decoy_catch' | 'bait_sent' | 'bait_created' | 'permaudit' | 'footprint' | 'manual' | 'intruder';
 
 export type ClassifyInput = {
   group: EvidenceGroup;
@@ -130,6 +130,9 @@ export function classify(input: ClassifyInput): Classification {
   } else if (input.group === 'footprint') {
     base = 'low';
     reasons.push('ec.s.footprint');
+  } else if (input.group === 'intruder') {
+    base = 'high';
+    reasons.push('ec.s.intruder');
   } else {
     base = MANUAL_BASE[input.category ?? 'other'] ?? 'low';
     reasons.push('ec.s.category');
@@ -296,6 +299,26 @@ export function autoItems(data: StoreData): VaultItem[] {
   for (const b of data.baits) {
     const cc = classify({ group: 'bait_created', confirmed: false, text: lc(b.name) });
     out.push(auto(`auto-created:${b.id}`, 'vault.auto.created', b.name, 'vault.source.bait', b.createdAt, cc, b.id));
+  }
+
+  // Intruder captures — a real photo was taken after repeated wrong-PIN attempts. Confirmed, high.
+  for (const c of data.intruderCaptures ?? []) {
+    const cc = classify({ group: 'intruder', confirmed: true, text: '' });
+    out.push({
+      key: `auto-intruder:${c.id}`,
+      origin: 'auto',
+      titleKey: 'vault.auto.intruder',
+      title: '',
+      sourceKey: 'vault.source.intruder',
+      sourceKind: 'auto',
+      at: c.at,
+      severity: cc.severity,
+      relevance: cc.relevance,
+      reasons: cc.reasons,
+      href: '/intruder',
+      sourceEventId: c.id,
+      text: '',
+    });
   }
   return out;
 }

@@ -35,6 +35,8 @@ const PARENT_TAB: Record<string, string> = {
   evidence: 'vault',
   'vault-add': 'vault',
   'plan-situation': 'plan',
+  'emergency-contacts': 'home',
+  intruder: 'home',
 };
 
 export function NazarTabBar({ state, navigateToTab }: BottomTabBarProps) {

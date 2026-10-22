@@ -53,6 +53,13 @@
         {
           "photosPermission": "This app reads photos you choose, on this device only, to check them for hidden location data. Nothing is uploaded."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "If you turn on intruder capture, this app uses the front camera to take a photo after repeated wrong-PIN attempts. The photo stays encrypted on this device and is never uploaded.",
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {

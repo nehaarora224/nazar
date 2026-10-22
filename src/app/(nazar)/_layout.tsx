@@ -50,6 +50,8 @@ export default function NazarLayout() {
       <Tabs.Screen name="session" />
       <Tabs.Screen name="evidence" />
       <Tabs.Screen name="vault-add" />
+      <Tabs.Screen name="emergency-contacts" />
+      <Tabs.Screen name="intruder" />
     </Tabs>
   );
 }

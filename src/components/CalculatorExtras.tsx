@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, FolderIcon, LockSimpleIcon, NoteIcon } from 'phosphor-react-native';
+import { ArrowLeftIcon, FileTextIcon, FolderIcon, LockSimpleIcon, NoteIcon } from 'phosphor-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -102,9 +102,10 @@ function MenuItem({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-/** What a snooper sees after opening a decoy: an ordinary, empty note or folder. */
+/** What a snooper sees after opening a decoy: an ordinary, empty note, folder or file. */
 export function DecoyView({ bait, onClose }: { bait: Bait; onClose: () => void }) {
-  const Icon = bait.type === 'history' ? NoteIcon : FolderIcon;
+  const Icon = bait.type === 'history' ? NoteIcon : bait.type === 'file' ? FileTextIcon : FolderIcon;
+  const empty = bait.type === 'history' ? 'Nothing saved yet' : bait.type === 'file' ? 'This file can’t be opened' : 'This folder is empty';
   return (
     <View style={[StyleSheet.absoluteFill, { backgroundColor: '#F7F7F7' }]}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
@@ -118,7 +119,7 @@ export function DecoyView({ bait, onClose }: { bait: Bait; onClose: () => void }
         </View>
         <View style={styles.decoyBody}>
           <Icon size={56} color="#B0B3B8" />
-          <Text style={styles.decoyEmpty}>{bait.type === 'history' ? 'Nothing saved yet' : 'This folder is empty'}</Text>
+          <Text style={styles.decoyEmpty}>{empty}</Text>
         </View>
       </SafeAreaView>
     </View>

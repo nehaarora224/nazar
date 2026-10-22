@@ -14,7 +14,7 @@ import { BaitType, TemplateId, useStore } from '../../store';
 import { colors, fonts, radius, space, type } from '../../theme';
 
 type Step = 'kind' | 'email' | 'preview' | 'd1' | 'd2' | 'd3' | 'd4';
-const DECOYS: BaitType[] = ['history', 'menu'];
+const DECOYS: BaitType[] = ['history', 'menu', 'file'];
 const TPL_ICON = { key: KeyIcon, shield: ShieldCheckIcon, envelope: EnvelopeSimpleIcon, device: DeviceMobileIcon };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 

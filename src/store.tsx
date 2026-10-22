@@ -29,7 +29,7 @@ export type { PlanConcern, PlanTask, PlanTaskStatus, Situation, TaskReason } fro
 export type Lang = 'en' | 'hi';
 
 /** Decoys that live inside the calculator disguise, the only place Nazar can observe them. */
-export type BaitType = 'history' | 'menu';
+export type BaitType = 'history' | 'menu' | 'file';
 export type Bait = { id: string; name: string; type: BaitType; createdAt: number; active: boolean };
 
 /** Her answer to "Was this you?" for a recorded event. Undefined means not reviewed yet. */
@@ -118,6 +118,15 @@ export type Attachment = { name?: string; mime: string; dataUrl: string; size: n
 /** Suggested or user-set severity of an evidence record. */
 export type Severity = 'info' | 'low' | 'medium' | 'high';
 
+/** A person's own emergency contact, shown for one-tap calling alongside the 181/112 helplines. */
+export type EmergencyContact = { id: string; name: string; phone: string };
+
+/**
+ * A front-camera photo taken after repeated wrong-PIN attempts (native Android only; see
+ * intruderCapture.ts). The photo is an Attachment stored inside the encrypted vault.
+ */
+export type IntruderCapture = { id: string; at: number; attempts: number; photo: Attachment };
+
 /** A snapshot copied into the Vault, so it survives even if its source is later deleted. */
 type EvidenceBase = { id: string; savedAt: number; refId: string; eventAt: number; reviewNote?: string };
 export type Evidence = EvidenceBase &
@@ -200,6 +209,12 @@ type Data = {
   auditFindings: AuditFinding[];
   remediation: RemediationAction[];
   evidence: Evidence[];
+  /** The person's own emergency contacts, for one-tap calling next to the helplines. */
+  emergencyContacts: EmergencyContact[];
+  /** Capture a front-camera photo after repeated wrong-PIN attempts (native Android only). Off by default. */
+  intruderCaptureOn: boolean;
+  /** Photos captured by that feature, kept inside the encrypted vault. */
+  intruderCaptures: IntruderCapture[];
   /** Legacy fixed-checklist progress. Superseded by the adaptive plan below; kept so old data isn't lost. */
   planDone: Record<string, boolean>;
   /** The person's own situation description (optional, encrypted) that drives the adaptive Safe Plan. */
@@ -218,6 +233,10 @@ const GUARD_KEY = 'nazar:guard:v1';
 const DECOY_KEY = 'nazar:decoys:v1';
 /** Plaintext buffer of decoy-open events captured while locked; folded into the vault on unlock. */
 const PENDING_KEY = 'nazar:pending:v1';
+/** Plaintext buffer of intruder photos captured while locked; folded into the vault on unlock. */
+const CAPTURE_KEY = 'nazar:captures:v1';
+/** Plaintext mirror of the intruder-capture on/off flag, so the locked calculator knows to arm the camera. */
+const CAPTURE_ON_KEY = 'nazar:captureon:v1';
 
 /** 32 random bytes as hex. Used for the device-scoped owner secret. */
 const genSecret = () => Array.from(Crypto.getRandomBytes(32), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -239,6 +258,9 @@ const EMPTY: Data = {
   auditFindings: [],
   remediation: [],
   evidence: [],
+  emergencyContacts: [],
+  intruderCaptureOn: false,
+  intruderCaptures: [],
   planDone: {},
   situation: null,
   planTasks: [],
@@ -279,6 +301,14 @@ function foldPending(d: Data, pending: BaitEvent[]): Data {
   return fresh.length ? { ...d, baitEvents: [...d.baitEvents, ...fresh] } : d;
 }
 
+/** Fold intruder photos captured while locked into the data, skipping any already present. */
+function foldCaptures(d: Data, caps: IntruderCapture[]): Data {
+  if (!caps.length) return d;
+  const known = new Set(d.intruderCaptures.map((c) => c.id));
+  const fresh = caps.filter((c) => !known.has(c.id));
+  return fresh.length ? { ...d, intruderCaptures: [...d.intruderCaptures, ...fresh] } : d;
+}
+
 /** Outcome of a PIN unlock attempt, so the calculator can react without leaking which case occurred. */
 export type UnlockResult = { ok: true } | { ok: false; reason: 'wrong_pin' | 'locked_out' | 'corrupt'; remainingMs?: number };
 
@@ -288,6 +318,8 @@ function useStoreValue() {
   const [saveFailed, setSaveFailed] = useState(false);
   // Decoy labels readable while locked, so the calculator disguise keeps working before unlock.
   const [decoys, setDecoys] = useState<Bait[]>([]);
+  // Whether intruder capture is armed — readable while locked so the calculator can arm the camera.
+  const [captureOn, setCaptureOn] = useState(false);
 
   const dekRef = useRef<Uint8Array | null>(null); // data-encryption key, held only while unlocked
   const envRef = useRef<VaultEnvelope | null>(null);
@@ -295,6 +327,7 @@ function useStoreValue() {
   const guardRef = useRef<Guard>(EMPTY_GUARD);
   const legacyRef = useRef<Data | null>(null); // migrated plaintext awaiting encryption on PIN creation
   const pendingRef = useRef<BaitEvent[]>([]); // decoy opens captured while locked
+  const captureRef = useRef<IntruderCapture[]>([]); // intruder photos captured while locked
   const canPersist = useRef(false); // true only once unlocked — guards against writing EMPTY over the vault
 
   // Load from storage into state on mount. Promise-chain form so every setState sits inside a
@@ -309,11 +342,15 @@ function useStoreValue() {
           AsyncStorage.getItem(PENDING_KEY),
           AsyncStorage.getItem(VAULT_KEY),
           AsyncStorage.getItem(LEGACY_KEY),
+          AsyncStorage.getItem(CAPTURE_KEY),
+          AsyncStorage.getItem(CAPTURE_ON_KEY),
         ]);
       })
-      .then(([guardRaw, decoyRaw, pendingRaw, vaultRaw, legacyRaw]) => {
+      .then(([guardRaw, decoyRaw, pendingRaw, vaultRaw, legacyRaw, captureRaw, captureOnRaw]) => {
         guardRef.current = guardRaw ? (JSON.parse(guardRaw) as Guard) : { ...EMPTY_GUARD };
         pendingRef.current = pendingRaw ? (JSON.parse(pendingRaw) as BaitEvent[]) : [];
+        captureRef.current = captureRaw ? (JSON.parse(captureRaw) as IntruderCapture[]) : [];
+        setCaptureOn(captureOnRaw === '1');
         const decoyIndex = decoyRaw ? (JSON.parse(decoyRaw) as Bait[]) : [];
         if (vaultRaw) {
           envRef.current = JSON.parse(vaultRaw) as VaultEnvelope;
@@ -344,6 +381,12 @@ function useStoreValue() {
     AsyncStorage.setItem(DECOY_KEY, JSON.stringify(baits)).catch(() => {});
   }, []);
 
+  // Mirror the (non-secret) intruder-capture flag to plaintext, so the locked calculator can read it.
+  const writeCaptureOn = useCallback((on: boolean) => {
+    setCaptureOn(on);
+    AsyncStorage.setItem(CAPTURE_ON_KEY, on ? '1' : '').catch(() => {});
+  }, []);
+
   // Encrypted write-through. Runs only after unlock/create (canPersist) and never with the empty
   // defaults; re-seals the blob under the in-memory DEK (fast — no KDF) and mirrors decoy labels.
   useEffect(() => {
@@ -354,15 +397,17 @@ function useStoreValue() {
       .then(() => setSaveFailed(false))
       .catch(() => setSaveFailed(true));
     writeDecoys(data.baits);
-  }, [data, status, writeDecoys]);
+    writeCaptureOn(data.intruderCaptureOn);
+  }, [data, status, writeDecoys, writeCaptureOn]);
 
   const update = useCallback((fn: (d: Data) => Data) => setData(fn), []);
 
   // Finish a successful unlock/create: fold locked-capture events, wipe the plaintext buffer, go ready.
   const finishUnlock = useCallback((d: Data) => {
-    const merged = foldPending(d, pendingRef.current);
+    const merged = foldCaptures(foldPending(d, pendingRef.current), captureRef.current);
     pendingRef.current = [];
-    AsyncStorage.removeItem(PENDING_KEY).catch(() => {});
+    captureRef.current = [];
+    AsyncStorage.multiRemove([PENDING_KEY, CAPTURE_KEY]).catch(() => {});
     canPersist.current = true;
     setData(merged);
     setStatus('ready');
@@ -372,15 +417,16 @@ function useStoreValue() {
   const createPin = useCallback(
     async (pin: string): Promise<UnlockResult> => {
       try {
-        const base = withSecret(foldPending(legacyRef.current ?? EMPTY, pendingRef.current));
+        const base = withSecret(foldCaptures(foldPending(legacyRef.current ?? EMPTY, pendingRef.current), captureRef.current));
         await new Promise((r) => setTimeout(r, 0)); // let the UI paint before the brief scrypt
         const env = createEnvelope(pin, JSON.stringify(base), randomBytes, pepperRef.current);
         envRef.current = env;
         dekRef.current = openEnvelope(pin, env, pepperRef.current).dek;
         await AsyncStorage.setItem(VAULT_KEY, JSON.stringify(env));
-        await AsyncStorage.multiRemove([LEGACY_KEY, PENDING_KEY]);
+        await AsyncStorage.multiRemove([LEGACY_KEY, PENDING_KEY, CAPTURE_KEY]);
         legacyRef.current = null;
         pendingRef.current = [];
+        captureRef.current = [];
         persistGuard(registerSuccess());
         canPersist.current = true;
         writeDecoys(base.baits);
@@ -597,6 +643,34 @@ function useStoreValue() {
         })),
       removeEvidence: (id: string) => update((d) => ({ ...d, evidence: d.evidence.filter((e) => e.id !== id) })),
 
+      /* Emergency contacts: the person's own one-tap numbers, shown beside the helplines. */
+      addEmergencyContact: (name: string, phone: string) => {
+        const id = uid();
+        update((d) => ({ ...d, emergencyContacts: [...d.emergencyContacts, { id, name: name.trim(), phone: phone.trim() }] }));
+        return id;
+      },
+      updateEmergencyContact: (id: string, patch: Partial<Pick<EmergencyContact, 'name' | 'phone'>>) =>
+        update((d) => ({ ...d, emergencyContacts: d.emergencyContacts.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
+      removeEmergencyContact: (id: string) => update((d) => ({ ...d, emergencyContacts: d.emergencyContacts.filter((c) => c.id !== id) })),
+
+      /* Intruder capture (native Android only). The flag is mirrored to plaintext by the save effect. */
+      setIntruderCaptureOn: (on: boolean) => update((d) => ({ ...d, intruderCaptureOn: on })),
+      /**
+       * Called by the calculator after a front-camera photo is taken on repeated wrong PINs. While
+       * unlocked it goes straight into the encrypted vault; while LOCKED it is buffered in the
+       * plaintext capture store and folded into the vault on the next unlock.
+       */
+      recordIntruderCapture: (photo: Attachment, attempts: number) => {
+        const cap: IntruderCapture = { id: uid(), at: Date.now(), attempts, photo };
+        if (canPersist.current) update((d) => ({ ...d, intruderCaptures: [...d.intruderCaptures, cap] }));
+        else {
+          captureRef.current = [...captureRef.current, cap];
+          AsyncStorage.setItem(CAPTURE_KEY, JSON.stringify(captureRef.current)).catch(() => {});
+        }
+        return cap.id;
+      },
+      removeIntruderCapture: (id: string) => update((d) => ({ ...d, intruderCaptures: d.intruderCaptures.filter((c) => c.id !== id) })),
+
       togglePlanStep: (key: string) => update((d) => ({ ...d, planDone: { ...d.planDone, [key]: !d.planDone[key] } })),
 
       /* Adaptive Safe Plan: describe a situation (regenerates, preserving progress), and edit tasks. */
@@ -611,7 +685,7 @@ function useStoreValue() {
     [update],
   );
 
-  return { data, status, saveFailed, decoys, retryLoad, createPin, unlock, lock, changePin, pinLockoutRemaining, ...actions };
+  return { data, status, saveFailed, decoys, captureOn, retryLoad, createPin, unlock, lock, changePin, pinLockoutRemaining, ...actions };
 }
 
 type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;

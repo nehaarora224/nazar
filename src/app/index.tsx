@@ -2,12 +2,13 @@ import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { BackspaceIcon, CaretDownIcon, ClockCounterClockwiseIcon, DotsThreeVerticalIcon } from 'phosphor-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { evaluate, formatResult } from '../calc';
 import { CalcEntry, DecoyView, HistoryPanel, OverflowMenu } from '../components/CalculatorExtras';
 import { useScreenSize } from '../components/DeviceFrame';
+import { IntruderCamera } from '../components/IntruderCamera';
 import { NazarMark } from '../components/Logo';
 import { Onboarding } from '../components/Onboarding';
 import { useT } from '../i18n';
@@ -18,6 +19,8 @@ import { colors, fonts } from '../theme';
 
 /** Digits that look like a PIN (4–12). Only these trigger an unlock attempt on "=". */
 const PIN_RE = /^\d{4,12}$/;
+/** Wrong-PIN attempts (while locked) before the optional intruder photo is taken. */
+const CAPTURE_AFTER = 3;
 
 /**
  * App root. First launch (no vault) shows the Welcome/Create-PIN onboarding; every later launch
@@ -53,8 +56,11 @@ function CalculatorUI() {
   const [history, setHistory] = useState<CalcEntry[]>(START_HISTORY);
   const [panel, setPanel] = useState<Panel>({ kind: 'none' });
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { recordBaitOpen, finishBaitOpen, status, decoys, unlock, lock } = useStore();
+  const { recordBaitOpen, finishBaitOpen, status, decoys, unlock, lock, captureOn, recordIntruderCapture } = useStore();
   const { t } = useT();
+  // Intruder capture (native Android only): count wrong-PIN attempts and arm the hidden camera.
+  const wrongTries = useRef(0);
+  const [arm, setArm] = useState(false);
   // Decoys come from the plaintext decoy index, so they run even while the vault is locked.
   const activeBaits = (type: Bait['type']) => decoys.filter((b) => b.active && b.type === type);
   const { width, height } = useScreenSize();
@@ -69,6 +75,8 @@ function CalculatorUI() {
       setUnlocking(false);
       setHistory(START_HISTORY);
       setPanel({ kind: 'none' });
+      wrongTries.current = 0;
+      setArm(false);
       // Back on the calculator means locked again: drop the navigation flag AND clear the key and
       // decrypted data from memory, so returning requires the PIN.
       session.lock();
@@ -120,11 +128,18 @@ function CalculatorUI() {
       if ((status === 'locked' || status === 'ready') && PIN_RE.test(s)) {
         unlock(s).then((res) => {
           if (res.ok) {
+            wrongTries.current = 0;
+            setArm(false);
             setUnlocking(true);
             session.unlock();
             clearTimeout(timer.current);
             timer.current = setTimeout(() => router.push('/home'), 900);
           } else {
+            // A genuine wrong PIN while locked: count it and, if the feature is on, arm the camera.
+            if (status === 'locked' && res.reason === 'wrong_pin') {
+              wrongTries.current += 1;
+              if (captureOn && Platform.OS === 'android' && wrongTries.current >= CAPTURE_AFTER) setArm(true);
+            }
             const v = evaluate(s);
             const result = v == null ? 'Error' : formatResult(v);
             setExpr(s + ' =');
@@ -241,10 +256,16 @@ function CalculatorUI() {
       )}
       {panel.kind === 'menu' && (
         <SafeAreaView edges={['top']} style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          <OverflowMenu decoys={activeBaits('menu')} onHistory={() => setPanel({ kind: 'history' })} onOpenDecoy={openDecoy} onClose={closePanel} />
+          <OverflowMenu decoys={[...activeBaits('menu'), ...activeBaits('file')]} onHistory={() => setPanel({ kind: 'history' })} onOpenDecoy={openDecoy} onClose={closePanel} />
         </SafeAreaView>
       )}
       {panel.kind === 'decoy' && <DecoyView bait={panel.bait} onClose={closePanel} />}
+
+      <IntruderCamera
+        armed={arm}
+        onCapture={(photo) => recordIntruderCapture(photo, wrongTries.current)}
+        onDone={() => setArm(false)}
+      />
 
       {unlocking && (
         <View style={styles.unlock}>

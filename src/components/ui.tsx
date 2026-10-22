@@ -4,7 +4,9 @@ import {
   CaretRightIcon,
   Icon,
   InfoIcon,
+  PhoneCallIcon,
   PhoneIcon,
+  PlusIcon,
   SignOutIcon,
   SirenIcon,
   WarningIcon,
@@ -628,13 +630,45 @@ export function Empty({ icon: I, title, body, action }: { icon: Icon; title: str
   );
 }
 
-/** 181 / 112 row, shown above the tab bar on every unlocked screen. */
+/** 181 / 112 row, shown above the tab bar on every unlocked screen, with the person's own
+ * one-tap emergency contacts and a shortcut to manage them directly beneath. */
 export function HelplineRow() {
   const { t } = useT();
+  const { data } = useStore();
+  const contacts = data.emergencyContacts;
   return (
-    <View style={styles.helplines}>
-      <HelplinePill icon={PhoneIcon} label={t('help.181')} tel="181" a11y={t('help.call', { name: t('help.181') })} />
-      <HelplinePill icon={SirenIcon} label={t('help.112')} tel="112" a11y={t('help.call', { name: t('help.112') })} danger />
+    <View style={styles.helplineWrap}>
+      <View style={styles.helplines}>
+        <HelplinePill icon={PhoneIcon} label={t('help.181')} tel="181" a11y={t('help.call', { name: t('help.181') })} />
+        <HelplinePill icon={SirenIcon} label={t('help.112')} tel="112" a11y={t('help.call', { name: t('help.112') })} danger />
+      </View>
+      <View style={styles.contactRow}>
+        {contacts.map((c) => (
+          <Pressable
+            key={c.id}
+            onPress={() => Linking.openURL(`tel:${c.phone}`)}
+            accessibilityRole="button"
+            accessibilityLabel={t('help.call', { name: c.name })}
+            style={({ pressed }) => [styles.contactPill, pressed && { backgroundColor: colors.lavender }]}
+          >
+            <PhoneCallIcon size={15} weight="fill" color={colors.primaryDeep} />
+            <Text style={styles.contactText} numberOfLines={1}>
+              {c.name}
+            </Text>
+          </Pressable>
+        ))}
+        <Pressable
+          onPress={() => router.navigate('/emergency-contacts')}
+          accessibilityRole="button"
+          accessibilityLabel={contacts.length ? t('ec.manage') : t('ec.add')}
+          style={({ pressed }) => [styles.contactAdd, pressed && { backgroundColor: colors.lavender }]}
+        >
+          <PlusIcon size={14} weight="bold" color={colors.primary} />
+          <Text style={[styles.contactText, { color: colors.primary }]} numberOfLines={1}>
+            {contacts.length ? t('ec.manage') : t('ec.add')}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -791,7 +825,31 @@ const styles = StyleSheet.create({
   chipOff: { backgroundColor: colors.surface, borderWidth: 1, borderColor: 'rgba(75,63,160,0.18)' },
   error: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 12, borderRadius: radius.md, backgroundColor: colors.actBg },
   empty: { alignItems: 'center', gap: space.sm, paddingVertical: space.xl, paddingHorizontal: space.lg },
-  helplines: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  helplineWrap: { paddingBottom: 2 },
+  helplines: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
+  contactRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, paddingBottom: 8 },
+  contactPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: 160,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: colors.lavenderSoft,
+  },
+  contactAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(75,63,160,0.3)',
+    borderStyle: 'dashed',
+  },
+  contactText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.primaryDeep },
   helpline: {
     flex: 1,
     height: 46,
