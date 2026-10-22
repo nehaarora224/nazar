@@ -6,9 +6,11 @@ import { getDevicePepper } from './crypto/deviceSecret';
 import { EMPTY_GUARD, Guard, isLockedOut, lockRemaining, registerFailure, registerSuccess } from './crypto/lockout';
 import { randomBytes } from './crypto/random';
 import { createEnvelope, openEnvelope, rewrapPin, sealData, VaultCorruptError, VaultEnvelope, WrongPinError } from './crypto/vaultCrypto';
+import { mergePlan, PlanConcern, PlanTask, PlanTaskStatus, setTaskStatus, Situation } from './plan';
 import { createReviewAccount, dropReviewAccount, NewReviewAccount, patchReviewAccounts, ReviewAccount, ReviewAccountPatch } from './reviewAccounts';
 
 export type { ReviewAccount, ReviewAccountStatus, ReviewServiceId, NewReviewAccount, ReviewAccountPatch } from './reviewAccounts';
+export type { PlanConcern, PlanTask, PlanTaskStatus, Situation, TaskReason } from './plan';
 
 /**
  * Everything Nazar remembers lives here, persisted on this device only. Nothing in this
@@ -153,7 +155,12 @@ type Data = {
   auditFindings: AuditFinding[];
   remediation: RemediationAction[];
   evidence: Evidence[];
+  /** Legacy fixed-checklist progress. Superseded by the adaptive plan below; kept so old data isn't lost. */
   planDone: Record<string, boolean>;
+  /** The person's own situation description (optional, encrypted) that drives the adaptive Safe Plan. */
+  situation: Situation | null;
+  /** The generated, editable plan tasks (encrypted). */
+  planTasks: PlanTask[];
 };
 
 /** Legacy pre-encryption store (plaintext). Read once, migrated into the encrypted vault, then deleted. */
@@ -188,6 +195,8 @@ const EMPTY: Data = {
   remediation: [],
   evidence: [],
   planDone: {},
+  situation: null,
+  planTasks: [],
 };
 
 /**
@@ -537,6 +546,15 @@ function useStoreValue() {
       removeEvidence: (id: string) => update((d) => ({ ...d, evidence: d.evidence.filter((e) => e.id !== id) })),
 
       togglePlanStep: (key: string) => update((d) => ({ ...d, planDone: { ...d.planDone, [key]: !d.planDone[key] } })),
+
+      /* Adaptive Safe Plan: describe a situation (regenerates, preserving progress), and edit tasks. */
+      setSituation: (concerns: PlanConcern[], text?: string) =>
+        update((d) => {
+          const now = Date.now();
+          return { ...d, situation: { concerns, text: text?.trim() || undefined, updatedAt: now }, planTasks: mergePlan(d.planTasks, concerns, now) };
+        }),
+      setPlanTaskStatus: (id: string, status: PlanTaskStatus) =>
+        update((d) => ({ ...d, planTasks: setTaskStatus(d.planTasks, id, status, Date.now()) })),
     }),
     [update],
   );
