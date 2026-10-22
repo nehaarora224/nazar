@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
-import { AppWindowIcon, GearSixIcon, PersonArmsSpreadIcon, ShieldCheckIcon } from 'phosphor-react-native';
+import { AppWindowIcon, GearSixIcon, LockSimpleIcon, PersonArmsSpreadIcon, ShieldCheckIcon } from 'phosphor-react-native';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { useConfirmSave } from '../../components/SaveToVault';
 import { Screen } from '../../components/Screen';
 import { InfoBox, ListCard, ListRow, PageTitle, PrimaryButton, SecondaryButton, SectionTitle, StatusLine, SubHeader } from '../../components/ui';
 import { TKey, useT } from '../../i18n';
@@ -34,10 +35,30 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
 /** Read-only Android permission & settings audit. Needs the native app; honest fallback elsewhere. */
 export default function PermissionAudit() {
   const { t } = useT();
+  const confirmSave = useConfirmSave();
   const [phase, setPhase] = useState<Phase>('idle');
   const [sum, setSum] = useState<AuditSummary | null>(null);
   const [raw, setRaw] = useState<RawAudit | null>(null);
+  const [saved, setSaved] = useState(false);
   const available = isPermissionAuditAvailable();
+
+  // Save a point-in-time snapshot of this device-state check into the encrypted Vault. Each save is
+  // its own record (unique refId), so re-running and re-saving keeps a history rather than clobbering.
+  const saveCheck = (s: AuditSummary) => {
+    const flagged = s.signals.filter((sig) => sig.review).map((sig) => t(SIGNAL_KEY[sig.key]));
+    const summary = flagged.length ? flagged.join(', ') : t('ec.s.permNone');
+    confirmSave(
+      {
+        kind: 'permaudit',
+        refId: `pa-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        eventAt: Date.now(),
+        title: t('pa.saveTitle'),
+        summary,
+        limitations: t('pa.saveLimits'),
+      },
+      { title: t('pa.saveTitle'), body: t('pa.saveLimits'), onSaved: () => setSaved(true) },
+    );
+  };
 
   const run = async () => {
     setPhase('running');
@@ -87,7 +108,8 @@ export default function PermissionAudit() {
               ))}
               <InfoBox kind="warn" body={t('pa.listCaveat')} />
 
-              <SecondaryButton label={t('pa.rerun')} onPress={run} />
+              <PrimaryButton icon={LockSimpleIcon} label={saved ? t('pa.saved') : t('pa.save')} disabled={saved} onPress={() => saveCheck(sum)} />
+              <SecondaryButton label={t('pa.rerun')} onPress={() => { setSaved(false); run(); }} />
             </>
           )}
         </>

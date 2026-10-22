@@ -1,4 +1,4 @@
-import { BluetoothIcon, EnvelopeSimpleIcon, FileLockIcon, FootprintsIcon, Icon, NotePencilIcon, PulseIcon, UserCircleIcon } from 'phosphor-react-native';
+import { BluetoothIcon, DeviceMobileIcon, EnvelopeSimpleIcon, FileLockIcon, FootprintsIcon, Icon, NotePencilIcon, PulseIcon, UserCircleIcon } from 'phosphor-react-native';
 
 import type { TKey } from '../i18n/en';
 import type { Evidence } from '../store';
@@ -13,6 +13,7 @@ export const KIND_ICON: Record<Evidence['kind'], Icon> = {
   quiet: PulseIcon,
   audit: FootprintsIcon,
   ble: BluetoothIcon,
+  permaudit: DeviceMobileIcon,
   note: NotePencilIcon,
 };
 
@@ -24,6 +25,7 @@ export const SOURCE_KEY: Record<Evidence['kind'], TKey> = {
   quiet: 'vault.source.quiet',
   audit: 'vault.source.audit',
   ble: 'vault.source.ble',
+  permaudit: 'vault.source.permaudit',
   note: 'vault.source.note',
 };
 
@@ -46,6 +48,8 @@ export function evidenceTitle(e: Evidence, t: T) {
       return e.title;
     case 'ble':
       return e.name || t('ble.unnamed');
+    case 'permaudit':
+      return e.title;
     case 'note':
       return e.title;
   }
@@ -61,7 +65,9 @@ export function evidenceDetail(e: Evidence, t: T, dur: (ms: number) => string) {
     case 'tracker':
       return [e.trackerType ? t(`trk.type.${e.trackerType}` as TKey) : '', e.note ? `“${e.note}”` : ''].filter(Boolean);
     case 'note':
-      return [t(`vault.cat.${e.category}` as TKey), e.note ? `“${e.note}”` : ''].filter(Boolean);
+      return [t(`vault.cat.${e.category}` as TKey), e.description || '', e.note ? `“${e.note}”` : ''].filter(Boolean);
+    case 'permaudit':
+      return [e.summary, e.note ? `“${e.note}”` : ''].filter(Boolean);
     default:
       return e.note ? [`“${e.note}”`] : [];
   }

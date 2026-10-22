@@ -111,6 +111,13 @@ export type RemediationAction = {
   completedAt?: number;
 };
 
+/** A file the person attached to an evidence record. Stored as a data URL INSIDE the encrypted
+ * vault blob (never written to public/unprotected storage), so it is encrypted at rest. */
+export type Attachment = { name?: string; mime: string; dataUrl: string; size: number };
+
+/** Suggested or user-set severity of an evidence record. */
+export type Severity = 'info' | 'low' | 'medium' | 'high';
+
 /** A snapshot copied into the Vault, so it survives even if its source is later deleted. */
 type EvidenceBase = { id: string; savedAt: number; refId: string; eventAt: number; reviewNote?: string };
 export type Evidence = EvidenceBase &
@@ -122,12 +129,50 @@ export type Evidence = EvidenceBase &
     | { kind: 'quiet'; area: QuietArea; note?: string }
     | { kind: 'audit'; module: AuditModuleId; title: string; note?: string }
     | { kind: 'ble'; name?: string; rssi?: number; note?: string }
-    // A record the person added to the Vault by hand.
-    | { kind: 'note'; title: string; category: ManualCategory; note?: string }
+    // A point-in-time snapshot of a "This phone" permission audit (what was found + its limits).
+    | { kind: 'permaudit'; title: string; summary: string; limitations: string; note?: string }
+    // A record the person added to the Vault by hand. severity here is the person's OWN override;
+    // the suggested severity is computed on the fly (classify() in vaultModel.ts), never stored over the original.
+    | {
+        kind: 'note';
+        title: string;
+        category: ManualCategory;
+        note?: string;
+        description?: string;
+        discovery?: string;
+        attachment?: Attachment;
+        severity?: Severity;
+      }
   );
 
-/** Categories offered when adding a Vault record by hand. */
-export type ManualCategory = 'incident' | 'bait' | 'tracker' | 'account' | 'audit' | 'other';
+/**
+ * Categories for a hand-added Vault record. The first six are what the add form offers; the rest
+ * are legacy values kept so older records stay valid.
+ */
+export type ManualCategory =
+  | 'suspicious_login'
+  | 'location_exposure'
+  | 'unfamiliar_device'
+  | 'message_email'
+  | 'tracker_concern'
+  | 'other'
+  | 'incident'
+  | 'bait'
+  | 'tracker'
+  | 'account'
+  | 'audit';
+
+/** Editable fields of a hand-added ('note') evidence record. */
+export type EvidencePatch = Partial<{
+  title: string;
+  category: ManualCategory;
+  note: string;
+  description: string;
+  discovery: string;
+  severity: Severity;
+  reviewNote: string;
+  attachment: Attachment | undefined;
+}>;
 
 type Data = {
   version: 2;
@@ -543,6 +588,13 @@ function useStoreValue() {
         ),
       setEvidenceNote: (id: string, reviewNote: string) =>
         update((d) => ({ ...d, evidence: d.evidence.map((e) => (e.id === id ? { ...e, reviewNote: reviewNote || undefined } : e)) })),
+      /** Edit a hand-added ('note') record. Only the person's own fields change; original event
+       * snapshots (bait/link/tracker/…) are never rewritten here, so originals stay intact. */
+      updateEvidence: (id: string, patch: EvidencePatch) =>
+        update((d) => ({
+          ...d,
+          evidence: d.evidence.map((e) => (e.id === id && e.kind === 'note' ? ({ ...e, ...patch } as Evidence) : e)),
+        })),
       removeEvidence: (id: string) => update((d) => ({ ...d, evidence: d.evidence.filter((e) => e.id !== id) })),
 
       togglePlanStep: (key: string) => update((d) => ({ ...d, planDone: { ...d.planDone, [key]: !d.planDone[key] } })),

@@ -1,69 +1,52 @@
 import { router } from 'expo-router';
-import { ArrowsDownUpIcon, CloudSlashIcon, DeviceMobileIcon, DownloadSimpleIcon, HourglassIcon, PlusIcon, TrayIcon } from 'phosphor-react-native';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ArrowsDownUpIcon, CloudSlashIcon, DeviceMobileIcon, DownloadSimpleIcon, HourglassIcon, MagnifyingGlassIcon, PlusIcon, TrayIcon } from 'phosphor-react-native';
+import { ReactNode, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { SheetHead, useOverlay } from '../../components/Overlay';
 import { Screen } from '../../components/Screen';
-import { Chips, Empty, ListCard, ListRow, MainHeader, PageTitle, PrimaryButton, Stats, Tabs, TonalButton } from '../../components/ui';
-import { evidenceDetail, evidenceTitle, KIND_ICON, SOURCE_KEY } from '../../content/evidence';
+import { Chips, Empty, InfoBox, ListCard, ListRow, MainHeader, PageTitle, Pill, PrimaryButton, Stats, Tabs, TonalButton } from '../../components/ui';
+import { KIND_ICON, SOURCE_KEY } from '../../content/evidence';
 import { buildTimelineText, downloadTimeline, timelineFilename } from '../../exportVault';
 import { useT } from '../../i18n';
-import { Evidence } from '../../store';
+import { useStore } from '../../store';
 import { platformKind } from '../../systemSettings';
-import { colors, fonts, space, type } from '../../theme';
+import { colors, fonts, radius, space, tone, type } from '../../theme';
 import { useView } from '../../view';
+import { buildVault, searchVault, SEVERITY_TONE, VaultFilter, VaultItem } from '../../vaultModel';
 
-type View2 = 'saved' | 'pending';
-type Cat = 'all' | 'bait' | 'tracker' | 'account' | 'audit';
+type View2 = 'timeline' | 'pending';
 
-const catOfKind = (kind: Evidence['kind']): Cat =>
-  kind === 'bait' || kind === 'link' ? 'bait' : kind === 'tracker' || kind === 'ble' ? 'tracker' : kind === 'account' ? 'account' : kind === 'audit' || kind === 'quiet' ? 'audit' : 'all';
-
-/** Which filter chip a saved record belongs to (manual notes route by their chosen category). */
-const catOf = (e: Evidence): Cat => {
-  if (e.kind !== 'note') return catOfKind(e.kind);
-  return e.category === 'bait' || e.category === 'tracker' || e.category === 'account' || e.category === 'audit' ? e.category : 'all';
-};
-
-/** Evidence Vault: a timeline of saved records, with manual entry and a downloadable export. */
+/**
+ * Evidence Vault: one searchable, filterable timeline (newest first) of REAL records — items Nazar
+ * auto-collected from events it actually recorded (bait/decoy opens, sends, creation), plus records
+ * the person saved or added by hand. No sample/demo data is shown here, so nothing fake is ever
+ * presented as evidence. A second tab lists items still awaiting review.
+ */
 export default function Vault() {
+  const { data } = useStore();
   const v = useView();
-  const { t, when, dur } = useT();
+  const { t, when } = useT();
   const { toast, openSheet, closeSheet } = useOverlay();
-  const [tab, setTab] = useState<View2>('saved');
-  const [cat, setCat] = useState<Cat>('all');
+  const [tab, setTab] = useState<View2>('timeline');
+  const [filter, setFilter] = useState<VaultFilter>('all');
+  const [q, setQ] = useState('');
   const [newest, setNewest] = useState(true);
   const web = platformKind === 'web';
 
-  const saved = [...v.evidence.filter((e) => cat === 'all' || catOf(e) === cat)].sort((a, b) => (b.eventAt - a.eventAt) * (newest ? 1 : -1));
-  const pending = [...v.pending.filter((p) => cat === 'all' || catOfKind(p.kind) === cat)].sort((a, b) => (b.at - a.at) * (newest ? 1 : -1));
-  const lastSaved = v.evidence.reduce((m, e) => Math.max(m, e.savedAt), 0);
+  const all = useMemo(() => buildVault(data), [data]);
+  const items = useMemo(() => {
+    const r = searchVault(all, q, filter);
+    return newest ? r : [...r].reverse();
+  }, [all, q, filter, newest]);
 
-  // The downloadable evidence file contains only records the person actually saved — never the
-  // seed/example entries — so an exported summary can't present example data as genuine evidence.
-  const realEvidence = v.evidence.filter((e) => !e.sample);
-  const runDownload = async () => {
-    closeSheet();
-    const text = buildTimelineText(realEvidence, t, when, dur);
-    const res = await downloadTimeline(timelineFilename(), text);
-    toast(res === 'failed' ? t('vault.dl.failed') : res === 'downloaded' ? t('vault.dl.ok') : t('vault.dl.saved'));
-  };
+  const autoCount = all.filter((i) => i.origin === 'auto').length;
+  const manualCount = all.filter((i) => i.origin === 'manual').length;
+  // Review queue: real (non-sample) events that may matter and haven't been dealt with yet.
+  const pending = [...v.pending.filter((p) => !p.sample)].sort((a, b) => (b.at - a.at) * (newest ? 1 : -1));
 
-  // Warn before exporting: the file leaves the encrypted vault as plain text.
-  const download = () => {
-    if (realEvidence.length === 0) {
-      toast(t('vault.dl.none'));
-      return;
-    }
-    openSheet(
-      <>
-        <SheetHead title={t('vault.dl.warnTitle')} body={t('vault.dl.warnBody')} />
-        <PrimaryButton label={t('vault.dl.warnConfirm')} onPress={runDownload} />
-        <TonalButton label={t('common.cancel')} onPress={closeSheet} />
-      </>,
-    );
-  };
+  // The downloadable file contains only records the person actually saved (data.evidence), never
+  // auto-derived or sample entries — so an exported summary can't present example data as genuine.
 
   return (
     <Screen header={<MainHeader />}>
@@ -78,9 +61,9 @@ export default function Vault() {
 
       <Stats
         items={[
-          { label: t('vault.status.saved'), value: v.evidence.length, t: 'safe' },
-          { label: t('vault.status.pending'), value: v.pending.length, t: v.pending.length ? 'look' : undefined },
-          { label: t('vault.lastAddedLabel'), value: lastSaved ? when(lastSaved) : '—', small: true },
+          { label: t('vault.status.saved'), value: manualCount, t: manualCount ? 'safe' : undefined },
+          { label: t('vault.origin.auto'), value: autoCount, small: true },
+          { label: t('vault.status.pending'), value: pending.length, t: pending.length ? 'look' : undefined },
         ]}
       />
       <Meta icon={web ? CloudSlashIcon : DeviceMobileIcon} text={web ? t('vault.chipWeb') : t('vault.chip')} />
@@ -89,47 +72,55 @@ export default function Vault() {
         value={tab}
         onChange={setTab}
         items={[
-          { key: 'saved', label: t('vault.status.saved'), count: v.evidence.length },
-          { key: 'pending', label: t('vault.status.pending'), count: v.pending.length },
+          { key: 'timeline', label: t('vault.tab.timeline'), count: all.length },
+          { key: 'pending', label: t('vault.status.pending'), count: pending.length },
         ]}
       />
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Chips<Cat>
-          value={cat}
-          onChange={setCat}
-          items={[
-            { key: 'all', label: t('vault.f.all') },
-            { key: 'bait', label: t('vault.f.bait') },
-            { key: 'tracker', label: t('vault.f.tracker') },
-            { key: 'account', label: t('vault.f.account') },
-            { key: 'audit', label: t('vault.f.audit') },
-          ]}
-        />
-      </View>
-      <Pressable onPress={() => setNewest(!newest)} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, alignSelf: 'flex-start' }}>
-        <ArrowsDownUpIcon size={16} color={colors.primary} />
-        <Text style={[type.pill, { color: colors.primary }]}>{newest ? t('vault.sort.newest') : t('vault.sort.oldest')}</Text>
-      </Pressable>
 
-      {tab === 'saved' ? (
-        saved.length === 0 ? (
-          <Empty icon={TrayIcon} title={t('vault.empty.title')} body={t('vault.empty.body')} />
-        ) : (
-          <View style={styles.timeline}>
-            {saved.map((e, i) => (
-              <TimelineRow
-                key={e.id}
-                first={i === 0}
-                last={i === saved.length - 1}
-                tone={colors.safe}
-                title={evidenceTitle(e, t)}
-                meta={t('vault.happened', { when: when(e.eventAt) })}
-                desc={[t(SOURCE_KEY[e.kind]), ...evidenceDetail(e, t, dur)].join(' · ')}
-                onPress={() => router.navigate({ pathname: '/evidence', params: { id: e.id } })}
-              />
-            ))}
+      {tab === 'timeline' ? (
+        <>
+          <View style={styles.search}>
+            <MagnifyingGlassIcon size={18} color={colors.muted} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder={t('vault.search')}
+              placeholderTextColor={colors.muted}
+              accessibilityLabel={t('vault.search')}
+              autoCorrect={false}
+              style={styles.searchInput}
+            />
           </View>
-        )
+          <Chips<VaultFilter>
+            value={filter}
+            onChange={setFilter}
+            items={[
+              { key: 'all', label: t('vault.f.all') },
+              { key: 'confirmed', label: t('rel.confirmed') },
+              { key: 'reported', label: t('rel.reported') },
+              { key: 'unverified', label: t('rel.unverified') },
+            ]}
+          />
+          <Pressable onPress={() => setNewest(!newest)} accessibilityRole="button" style={styles.sort}>
+            <ArrowsDownUpIcon size={16} color={colors.primary} />
+            <Text style={[type.pill, { color: colors.primary }]}>{newest ? t('vault.sort.newest') : t('vault.sort.oldest')}</Text>
+          </Pressable>
+
+          {all.length === 0 ? (
+            <Empty icon={TrayIcon} title={t('vault.timelineEmpty')} body={t('vault.timelineEmptyBody')} />
+          ) : items.length === 0 ? (
+            <Empty icon={MagnifyingGlassIcon} title={t('vault.noResults')} />
+          ) : (
+            <>
+              <View style={styles.timeline}>
+                {items.map((it, i) => (
+                  <TimelineRow key={it.key} item={it} first={i === 0} last={i === items.length - 1} onPress={() => openItem(it)} />
+                ))}
+              </View>
+              <InfoBox body={t('vault.autoNote')} />
+            </>
+          )}
+        </>
       ) : (
         <ListCard title={t('vault.status.pending')} count={pending.length}>
           {pending.length === 0 ? (
@@ -150,28 +141,79 @@ export default function Vault() {
         </ListCard>
       )}
 
-      {v.evidence.length > 0 && (
-        <PrimaryButton icon={DownloadSimpleIcon} label={t('vault.download')} onPress={download} />
-      )}
+      {manualCount > 0 && <DownloadButton onToast={toast} openSheet={openSheet} closeSheet={closeSheet} evidence={data.evidence} />}
     </Screen>
   );
 }
 
-function TimelineRow({ first, last, tone, title, meta, desc, onPress }: { first: boolean; last: boolean; tone: string; title: string; meta: string; desc?: string; onPress: () => void }) {
+function openItem(it: VaultItem) {
+  if (it.evidenceId) router.navigate({ pathname: '/evidence', params: { id: it.evidenceId } });
+  else if (it.href) router.navigate({ pathname: it.href as '/bait-detail', params: it.hrefParams });
+}
+
+/** One timeline entry: title, when · source · category, and severity / relevance / origin pills. */
+function TimelineRow({ item, first, last, onPress }: { item: VaultItem; first: boolean; last: boolean; onPress: () => void }) {
+  const { t, when } = useT();
+  const title = item.titleKey ? (item.subtitle ? `${t(item.titleKey)} · ${item.subtitle}` : t(item.titleKey)) : item.title;
+  const meta = [when(item.at), t(item.sourceKey), item.catKey ? t(item.catKey) : ''].filter(Boolean).join(' · ');
+  const sevTone = SEVERITY_TONE[item.severity];
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={styles.row}>
       <View style={styles.rail}>
         {!first && <View style={styles.lineUp} />}
-        <View style={[styles.dot, { backgroundColor: tone }]} />
+        <View style={[styles.dot, { backgroundColor: tone[sevTone].dot }]} />
         {!last && <View style={styles.lineDown} />}
       </View>
-      <View style={{ flex: 1, paddingBottom: space.md, gap: 2 }}>
+      <View style={{ flex: 1, paddingBottom: space.md, gap: 5 }}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.meta}>{meta}</Text>
-        {desc ? <Text style={[type.body, { fontSize: 13 }]}>{desc}</Text> : null}
+        <View style={styles.pills}>
+          <Pill t={sevTone} label={t(`sev.${item.severity}`)} />
+          <Tag label={t(`rel.${item.relevance}`)} />
+          <Tag label={item.origin === 'auto' ? t('vault.origin.auto') : t('vault.origin.manual')} muted />
+        </View>
       </View>
     </Pressable>
   );
+}
+
+/** A small flat label chip (no status dot), used for relevance and origin. */
+function Tag({ label, muted }: { label: string; muted?: boolean }) {
+  return (
+    <View style={[styles.tag, muted && { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}>
+      <Text style={[type.pill, { color: muted ? colors.muted : colors.primaryDeep }]}>{label}</Text>
+    </View>
+  );
+}
+
+function DownloadButton({
+  evidence,
+  onToast,
+  openSheet,
+  closeSheet,
+}: {
+  evidence: Parameters<typeof buildTimelineText>[0];
+  onToast: (s: string) => void;
+  openSheet: (n: ReactNode) => void;
+  closeSheet: () => void;
+}) {
+  const { t, when, dur } = useT();
+  const run = async () => {
+    closeSheet();
+    const text = buildTimelineText(evidence, t, when, dur);
+    const res = await downloadTimeline(timelineFilename(), text);
+    onToast(res === 'failed' ? t('vault.dl.failed') : res === 'downloaded' ? t('vault.dl.ok') : t('vault.dl.saved'));
+  };
+  // Warn before exporting: the file leaves the encrypted vault as plain text.
+  const download = () =>
+    openSheet(
+      <>
+        <SheetHead title={t('vault.dl.warnTitle')} body={t('vault.dl.warnBody')} />
+        <PrimaryButton label={t('vault.dl.warnConfirm')} onPress={run} />
+        <TonalButton label={t('common.cancel')} onPress={closeSheet} />
+      </>,
+    );
+  return <PrimaryButton icon={DownloadSimpleIcon} label={t('vault.download')} onPress={download} />;
 }
 
 function Meta({ icon: I, text }: { icon: typeof DeviceMobileIcon; text: string }) {
@@ -185,6 +227,9 @@ function Meta({ icon: I, text }: { icon: typeof DeviceMobileIcon; text: string }
 
 const styles = StyleSheet.create({
   add: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, minHeight: 48, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface },
+  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink, paddingVertical: 10, outlineColor: colors.primary },
+  sort: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, alignSelf: 'flex-start' },
   timeline: { paddingHorizontal: 4 },
   row: { flexDirection: 'row', gap: 12 },
   rail: { width: 16, alignItems: 'center' },
@@ -193,4 +238,6 @@ const styles = StyleSheet.create({
   lineDown: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 2 },
   title: { fontFamily: fonts.medium, fontSize: 16, color: colors.ink },
   meta: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
+  pills: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  tag: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.lavenderSoft },
 });

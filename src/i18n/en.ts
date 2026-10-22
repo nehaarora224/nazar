@@ -1101,6 +1101,94 @@ export const en = {
   'plt.secure_changes.limits': 'If someone is monitoring you, a sudden lock-out can escalate things. Nazar never does any of this automatically — the choice and timing are yours.',
   'plt.secure_changes.alt': 'If now isn’t safe, plan it with a trusted person or helpline first, then make the changes when you’re ready.',
 
+  // Evidence classification (transparent rules)
+  'sev.info': 'Info',
+  'sev.low': 'Low',
+  'sev.medium': 'Medium',
+  'sev.high': 'High',
+  'rel.confirmed': 'Confirmed',
+  'rel.reported': 'You reported',
+  'rel.unverified': 'Unverified',
+  'ec.r.confirmed': 'A confirmed technical event — the device or backend actually reported it.',
+  'ec.r.reported': 'A report in your own words.',
+  'ec.r.footprint': 'A footprint finding you identified.',
+  'ec.r.unconfirmed': 'Not technically verified.',
+  'ec.r.created': 'A bait you set up — nothing has been caught yet.',
+  'ec.r.nothing': 'The check found nothing worth reviewing.',
+  'ec.s.notMe': 'You marked this as “not me”.',
+  'ec.s.me': 'You confirmed this was you.',
+  'ec.s.catch': 'A bait or decoy was opened.',
+  'ec.s.sent': 'A bait was sent — not a catch.',
+  'ec.s.created': 'A setup action, not a catch.',
+  'ec.s.perm': 'Device settings worth reviewing.',
+  'ec.s.permNone': 'Nothing notable was enabled.',
+  'ec.s.footprint': 'A public-exposure finding.',
+  'ec.s.category': 'Based on the category you chose.',
+  'ec.s.wording': 'Raised one step based on your wording (not a detection).',
+  'ec.s.capUnverified': 'Kept low because it isn’t verified.',
+
+  // Vault categories (new)
+  'vault.cat.suspicious_login': 'Suspicious login',
+  'vault.cat.location_exposure': 'Location exposure',
+  'vault.cat.unfamiliar_device': 'Unfamiliar device',
+  'vault.cat.message_email': 'Message / email',
+  'vault.cat.tracker_concern': 'Tracker concern',
+  'vault.source.permaudit': 'This phone',
+
+  // Vault timeline
+  'vault.tab.timeline': 'Timeline',
+  'vault.search': 'Search evidence',
+  'vault.noResults': 'No evidence matches your search.',
+  'vault.origin.auto': 'Auto-collected',
+  'vault.origin.manual': 'Added by you',
+  'vault.autoNote': 'Auto-collected items are real events Nazar recorded (bait opens, decoy opens). They reflect their source and aren’t editable; open one to see it.',
+  'vault.timelineEmpty': 'Nothing yet',
+  'vault.timelineEmptyBody': 'As Nazar records real events — or you add your own — they appear here, newest first.',
+
+  // Auto-collected titles
+  'vault.auto.linkOpen': 'Bait link opened',
+  'vault.auto.decoyOpen': 'Decoy opened in the calculator',
+  'vault.auto.sent': 'Bait email sent',
+  'vault.auto.created': 'Bait created',
+
+  // Add Evidence
+  'vaultAdd.desc': 'Description',
+  'vaultAdd.descPh': 'What happened, in as much detail as you like…',
+  'vaultAdd.discovery': 'How you noticed (optional)',
+  'vaultAdd.discoveryPh': 'e.g. saw it in settings, a friend told me…',
+  'vaultAdd.time': 'Time (optional)',
+  'vaultAdd.attach': 'Attach a screenshot or photo',
+  'vaultAdd.attachChange': 'Change image',
+  'vaultAdd.attachRemove': 'Remove image',
+  'vaultAdd.attachNote': 'The image is stored encrypted inside the Vault on this device, not in your gallery or any server. Please keep it small.',
+  'vaultAdd.attachTooBig': 'That image is too large. Choose one under 1.5 MB.',
+  'vaultAdd.attachDenied': 'Photo permission is needed to attach an image.',
+  'vaultAdd.attachFailed': 'Couldn’t attach that image.',
+  'vaultAdd.badDate': 'Enter the date as YYYY-MM-DD.',
+  'vaultAdd.suggested': 'Suggested classification',
+  'vaultAdd.severity': 'Severity',
+  'vaultAdd.override': 'These are suggestions from simple rules — change the category or severity if they’re wrong.',
+
+  // Evidence detail
+  'ev.description': 'Description',
+  'ev.discovery': 'How you noticed',
+  'ev.attachment': 'Attachment',
+  'ev.class': 'Suggested classification',
+  'ev.whyClass': 'Why this suggestion',
+  'ev.origin': 'Added',
+  'ev.editTitle': 'Edit details',
+  'ev.category': 'Category',
+  'ev.saveChanges': 'Save changes',
+  'ev.changesSaved': 'Changes saved',
+  'ev.classNote': 'A transparent suggestion from simple rules — not a detection. You can change it.',
+  'ev.autoReadonly': 'This is an auto-collected event from its source; open the source to act on it.',
+
+  // Permission Audit → Vault
+  'pa.save': 'Save this check to the Vault',
+  'pa.saved': 'Saved to the Vault',
+  'pa.saveTitle': 'This phone — permission check',
+  'pa.saveLimits': 'Reads only what any app may see; needs no permissions; can’t prove spying or detect all stalkerware.',
+
 };
 
 export type TKey = keyof typeof en;
