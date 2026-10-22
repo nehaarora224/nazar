@@ -9,20 +9,28 @@ import { evaluate, formatResult } from '../calc';
 import { CalcEntry, DecoyView, HistoryPanel, OverflowMenu } from '../components/CalculatorExtras';
 import { useScreenSize } from '../components/DeviceFrame';
 import { NazarMark } from '../components/Logo';
-import { PinSetup } from '../components/PinSetup';
+import { Onboarding } from '../components/Onboarding';
 import { useT } from '../i18n';
+import { rootScreen } from '../routing';
 import { session } from '../session';
 import { Bait, useStore } from '../store';
 import { colors, fonts } from '../theme';
 
-/**
- * The open code: a fixed, non-secret gesture that reveals Nazar's PIN setup on first run. It is NOT
- * the security boundary — the saved data is encrypted under the user's own PIN (see store.tsx and
- * crypto/vaultCrypto.ts). Once a PIN exists, unlocking is done by typing THAT PIN and pressing =;
- * a wrong PIN (or this code) just behaves like any other calculation, keeping the disguise intact.
- */
-const OPEN_CODE = '1947';
+/** Digits that look like a PIN (4–12). Only these trigger an unlock attempt on "=". */
 const PIN_RE = /^\d{4,12}$/;
+
+/**
+ * App root. First launch (no vault) shows the Welcome/Create-PIN onboarding; every later launch
+ * shows the calculator/decoy, where the existing PIN unlocks the Vault. The choice is driven by the
+ * store's load status (never by a typed code during an indeterminate "loading" moment).
+ */
+export default function Index() {
+  const { status } = useStore();
+  const screen = rootScreen(status);
+  if (screen === 'loading') return <View style={styles.splash} />;
+  if (screen === 'onboarding') return <Onboarding />;
+  return <CalculatorUI />;
+}
 // Start blank, like a freshly opened calculator.
 const START = { expr: '', display: '0' };
 const START_HISTORY: CalcEntry[] = [];
@@ -36,15 +44,14 @@ const OPERATORS = ['÷', '×', '−', '+'];
 
 /**
  * Screen 01 — The Disguise. A stock-looking Android calculator: neutral greys, the system
- * font, no Nazar styling. It really calculates.
+ * font, no Nazar styling. It really calculates. Typing the PIN and pressing = unlocks the Vault.
  */
-export default function Calculator() {
+function CalculatorUI() {
   const [expr, setExpr] = useState(START.expr);
   const [display, setDisplay] = useState(START.display);
   const [unlocking, setUnlocking] = useState(false);
   const [history, setHistory] = useState<CalcEntry[]>(START_HISTORY);
   const [panel, setPanel] = useState<Panel>({ kind: 'none' });
-  const [showCreate, setShowCreate] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { recordBaitOpen, finishBaitOpen, status, decoys, unlock, lock } = useStore();
   const { t } = useT();
@@ -62,7 +69,6 @@ export default function Calculator() {
       setUnlocking(false);
       setHistory(START_HISTORY);
       setPanel({ kind: 'none' });
-      setShowCreate(false);
       // Back on the calculator means locked again: drop the navigation flag AND clear the key and
       // decrypted data from memory, so returning requires the PIN.
       session.lock();
@@ -109,11 +115,6 @@ export default function Calculator() {
     }
     if (k === '=') {
       const s = expr.replace(/\s/g, '');
-      // First run: the open code reveals PIN setup. After a PIN exists it is just a number.
-      if (status === 'setup' && s === OPEN_CODE) {
-        setShowCreate(true);
-        return;
-      }
       // A plausible PIN (4–12 digits): try to unlock. A wrong PIN or an active lockout silently
       // falls back to showing the result of the "calculation", so the disguise never breaks.
       if ((status === 'locked' || status === 'ready') && PIN_RE.test(s)) {
@@ -245,19 +246,6 @@ export default function Calculator() {
       )}
       {panel.kind === 'decoy' && <DecoyView bait={panel.bait} onClose={closePanel} />}
 
-      {showCreate && (
-        <PinSetup
-          onDone={() => {
-            setShowCreate(false);
-            setUnlocking(true);
-            session.unlock();
-            clearTimeout(timer.current);
-            timer.current = setTimeout(() => router.push('/home'), 900);
-          }}
-          onCancel={() => setShowCreate(false)}
-        />
-      )}
-
       {unlocking && (
         <View style={styles.unlock}>
           <StatusBar style="light" />
@@ -271,6 +259,8 @@ export default function Calculator() {
 }
 
 const styles = StyleSheet.create({
+  // Neutral splash shown only during the brief storage read, so nothing races before status is known.
+  splash: { flex: 1, backgroundColor: '#F7F7F7' },
   root: { flex: 1, backgroundColor: '#F7F7F7' },
   flex: { flex: 1 },
   topIcons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 0, paddingTop: 2, paddingHorizontal: 10 },
