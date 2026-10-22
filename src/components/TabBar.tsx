@@ -17,6 +17,8 @@ const TABS: { name: string; label: TKey; icon: Icon }[] = [
 /** Detail screens that live under a tab without having their own. */
 const PARENT_TAB: Record<string, string> = {
   accounts: 'home',
+  'account-add': 'home',
+  'review-account': 'home',
   'account-check': 'home',
   'account-item': 'home',
   'digital-footprint-audit': 'home',

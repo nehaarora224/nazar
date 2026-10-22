@@ -10,7 +10,8 @@ import {
   InstagramLogoIcon,
   MapPinIcon,
   PhoneIcon,
-  ShieldCheckIcon,
+  PlusIcon,
+  UserCircleIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
@@ -19,7 +20,9 @@ import { View } from 'react-native';
 import { Screen } from '../../components/Screen';
 import { Empty, InfoBox, ListCard, ListRow, PageTitle, PrimaryButton, SampleBanner, Stats, StatusLine, SubHeader, Tabs } from '../../components/ui';
 import { ACCOUNT_CHECKS, checkKey, SECTIONS } from '../../content/accountChecks';
+import { REVIEW_SERVICE_BY_ID, REVIEW_STATUS_META, serviceNameKey } from '../../content/reviewServices';
 import { TKey, useT } from '../../i18n';
+import { reviewAccountSummary } from '../../reviewAccounts';
 import type { AccountKind, SampleSession, SampleSharing } from '../../sample';
 import { AccountAnswer, useStore } from '../../store';
 import { Tone } from '../../theme';
@@ -53,12 +56,16 @@ export default function Accounts() {
     }, [params.tab]),
   );
 
+  // User-added accounts to review (real, user-entered), kept separate from the labelled samples.
+  const real = data.reviewAccounts;
+  const raSum = reviewAccountSummary(real);
+
   // Devices and sessions she recorded during guided checks (real), plus labelled samples.
   const recorded = ACCOUNT_CHECKS.filter((c) => c.section !== 'sharing' && data.accountAnswers[c.id]?.status === 'review');
   const answers = ACCOUNT_CHECKS.map((c) => data.accountAnswers[c.id]);
   const done = answers.filter((a) => a && a.status !== 'skipped').length;
-  const attention = recorded.length + v.sessions.filter((s) => s.status === 'unfamiliar').length + v.sharing.filter((s) => s.status === 'review').length;
-  const reviewed = answers.filter((a) => a?.status === 'ok').length + v.sessions.filter((s) => s.status !== 'unfamiliar').length + v.sharing.filter((s) => s.status === 'ok').length;
+  const attention = raSum.attention + recorded.length + v.sessions.filter((s) => s.status === 'unfamiliar').length + v.sharing.filter((s) => s.status === 'review').length;
+  const reviewed = raSum.reviewed + answers.filter((a) => a?.status === 'ok').length + v.sessions.filter((s) => s.status !== 'unfamiliar').length + v.sharing.filter((s) => s.status === 'ok').length;
   const firstOpen = ACCOUNT_CHECKS.findIndex((c) => !data.accountAnswers[c.id] || data.accountAnswers[c.id].status === 'skipped');
   const started = answers.some(Boolean);
   const startCheck = () =>
@@ -91,27 +98,51 @@ export default function Accounts() {
       />
 
       {tab === 'accounts' && (
-        <ListCard title={t('acct.tab.accounts')} count={v.accounts.length}>
-          {v.accounts.length === 0 ? (
-            <Empty icon={ShieldCheckIcon} title={t('acct.empty.title')} body={t('acct.empty.body')} action={<PrimaryButton label={startLabel} onPress={startCheck} />} />
-          ) : (
-            v.accounts.map((a, i) => {
-              const n = v.sessions.filter((s) => s.accountId === a.id).length;
-              return (
-                <ListRow
-                  key={a.id}
-                  first={i === 0}
-                  icon={KIND_ICON[a.kind]}
-                  title={a.service}
-                  status={<StatusLine t={a.status === 'review' ? 'look' : 'safe'} label={a.status === 'review' ? t('acct.needsAttention') : t('acct.reviewed')} sample={a.sample} />}
-                  desc={`${a.account} · ${t(`acct.kind.${a.kind}` as TKey)}`}
-                  meta={`${t(n === 1 ? 'acct.sessions_one' : 'acct.sessions_other', { n })} · ${t('acct.checkedAt', { when: when(a.checkedAt) })}`}
-                  onPress={() => router.navigate({ pathname: '/session', params: { account: a.id } })}
-                />
-              );
-            })
+        <>
+          <PrimaryButton icon={PlusIcon} label={t('racc.add')} onPress={() => router.navigate('/account-add')} />
+          <ListCard title={t('racc.yours')} count={real.length}>
+            {real.length === 0 ? (
+              <Empty icon={UserCircleIcon} title={t('racc.emptyTitle')} body={t('racc.emptyBody')} />
+            ) : (
+              real.map((a, i) => {
+                const m = REVIEW_STATUS_META[a.status];
+                const name = a.service === 'custom' ? a.serviceName : t(serviceNameKey(a.service));
+                return (
+                  <ListRow
+                    key={a.id}
+                    first={i === 0}
+                    icon={REVIEW_SERVICE_BY_ID[a.service].icon}
+                    title={name}
+                    status={<StatusLine t={m.tone} label={t(m.key)} />}
+                    desc={a.label ? `${a.label} · ${t('common.recordedByYou')}` : t('common.recordedByYou')}
+                    meta={when(a.updatedAt)}
+                    onPress={() => router.navigate({ pathname: '/review-account', params: { id: a.id } })}
+                  />
+                );
+              })
+            )}
+          </ListCard>
+
+          {v.accounts.length > 0 && (
+            <ListCard title={t('racc.examples')} count={v.accounts.length}>
+              {v.accounts.map((a, i) => {
+                const n = v.sessions.filter((s) => s.accountId === a.id).length;
+                return (
+                  <ListRow
+                    key={a.id}
+                    first={i === 0}
+                    icon={KIND_ICON[a.kind]}
+                    title={a.service}
+                    status={<StatusLine t={a.status === 'review' ? 'look' : 'safe'} label={a.status === 'review' ? t('acct.needsAttention') : t('acct.reviewed')} sample={a.sample} />}
+                    desc={`${a.account} · ${t(`acct.kind.${a.kind}` as TKey)}`}
+                    meta={`${t(n === 1 ? 'acct.sessions_one' : 'acct.sessions_other', { n })} · ${t('acct.checkedAt', { when: when(a.checkedAt) })}`}
+                    onPress={() => router.navigate({ pathname: '/session', params: { account: a.id } })}
+                  />
+                );
+              })}
+            </ListCard>
           )}
-        </ListCard>
+        </>
       )}
 
       {tab === 'devices' && (

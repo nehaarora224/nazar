@@ -32,6 +32,8 @@ export default function NazarLayout() {
       <Tabs.Screen name="plan" />
       {/* Detail screens: routable, but NazarTabBar only draws the four tabs above. */}
       <Tabs.Screen name="accounts" />
+      <Tabs.Screen name="account-add" />
+      <Tabs.Screen name="review-account" />
       <Tabs.Screen name="account-check" />
       <Tabs.Screen name="account-item" />
       <Tabs.Screen name="digital-footprint-audit" />

@@ -6,6 +6,9 @@ import { getDevicePepper } from './crypto/deviceSecret';
 import { EMPTY_GUARD, Guard, isLockedOut, lockRemaining, registerFailure, registerSuccess } from './crypto/lockout';
 import { randomBytes } from './crypto/random';
 import { createEnvelope, openEnvelope, rewrapPin, sealData, VaultCorruptError, VaultEnvelope, WrongPinError } from './crypto/vaultCrypto';
+import { createReviewAccount, dropReviewAccount, NewReviewAccount, patchReviewAccounts, ReviewAccount, ReviewAccountPatch } from './reviewAccounts';
+
+export type { ReviewAccount, ReviewAccountStatus, ReviewServiceId, NewReviewAccount, ReviewAccountPatch } from './reviewAccounts';
 
 /**
  * Everything Nazar remembers lives here, persisted on this device only. Nothing in this
@@ -140,6 +143,8 @@ type Data = {
   emailBaits: EmailBait[];
   linkEvents: LinkEvent[];
   accountAnswers: Record<string, AccountAnswer>;
+  /** User-added accounts to review (Google/Instagram/WhatsApp/email/custom). All user-entered. */
+  reviewAccounts: ReviewAccount[];
   /** Preserved from the old Quiet Check feature; no longer added to, but kept for continuity. */
   quietEntries: QuietEntry[];
   trackerEntries: TrackerEntry[];
@@ -175,6 +180,7 @@ const EMPTY: Data = {
   emailBaits: [],
   linkEvents: [],
   accountAnswers: {},
+  reviewAccounts: [],
   quietEntries: [],
   trackerEntries: [],
   auditItems: {},
@@ -464,6 +470,16 @@ function useStoreValue() {
 
       answerAccountCheck: (checkId: string, status: AnswerStatus, note?: string) =>
         update((d) => ({ ...d, accountAnswers: { ...d.accountAnswers, [checkId]: { status, note, at: Date.now() } } })),
+
+      /* User-added accounts to review (all user-entered; Nazar never signs in or reads sessions). */
+      addReviewAccount: (input: NewReviewAccount) => {
+        const id = uid();
+        update((d) => ({ ...d, reviewAccounts: [...d.reviewAccounts, createReviewAccount(input, id, Date.now())] }));
+        return id;
+      },
+      updateReviewAccount: (id: string, patch: ReviewAccountPatch) =>
+        update((d) => ({ ...d, reviewAccounts: patchReviewAccounts(d.reviewAccounts, id, patch, Date.now()) })),
+      removeReviewAccount: (id: string) => update((d) => ({ ...d, reviewAccounts: dropReviewAccount(d.reviewAccounts, id) })),
 
       /* Digital Footprint Audit */
       setAuditItem: (module: AuditModuleId, itemId: string, status: AuditStatus, note?: string) =>
